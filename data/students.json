@@ -1,0 +1,2471 @@
+{
+  "college": "XYZ College of Engineering",
+  "as_of": "2026-11-03",
+  "students": [
+    {
+      "student_id": "XYZ24CSE001",
+      "name": "Aarav Sharma",
+      "branch": "CSE",
+      "year": 3,
+      "semester": 5,
+      "email": "aarav.sharma001@xyz.edu.example",
+      "hostel": {
+        "block": "A",
+        "room": "A-214"
+      },
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 149000,
+        "paid": 89400,
+        "due": 59600,
+        "due_date": "2026-11-30",
+        "status": "partially_paid",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-08-10",
+            "amount": 89400,
+            "mode": "UPI",
+            "receipt_no": "XYZR-2026-01000"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-CS-0421",
+            "title": "Operating Systems: A Practical Approach",
+            "author": "N. Raghavan",
+            "issue_date": "2026-10-20",
+            "due_date": "2026-11-03",
+            "status": "issued"
+          },
+          {
+            "book_id": "LIB-CS-0517",
+            "title": "Database Systems Made Simple",
+            "author": "A. Deshmukh",
+            "issue_date": "2026-10-28",
+            "due_date": "2026-11-11",
+            "status": "issued"
+          }
+        ],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 82.5,
+        "courses": [
+          {
+            "code": "CS501",
+            "name": "Operating Systems",
+            "pct": 84.0
+          },
+          {
+            "code": "CS502",
+            "name": "Database Management Systems",
+            "pct": 80.5
+          },
+          {
+            "code": "CS503",
+            "name": "Computer Networks",
+            "pct": 86.0
+          },
+          {
+            "code": "CS504",
+            "name": "Theory of Computation",
+            "pct": 78.0
+          },
+          {
+            "code": "CS505",
+            "name": "Machine Learning (Elective I)",
+            "pct": 84.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 8.12,
+        "last_sgpa": 8.4,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "CS501",
+            "course_name": "Operating Systems",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "10:00-13:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "CS502",
+            "course_name": "Database Management Systems",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "10:00-13:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "CS503",
+            "course_name": "Computer Networks",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "10:00-13:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "CS504",
+            "course_name": "Theory of Computation",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "10:00-13:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "CS505",
+            "course_name": "Machine Learning (Elective I)",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "10:00-13:00",
+            "room": "LH-1"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ24CSE017",
+      "name": "Diya Patel",
+      "branch": "CSE",
+      "year": 3,
+      "semester": 5,
+      "email": "diya.patel017@xyz.edu.example",
+      "hostel": null,
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 95000,
+        "paid": 95000,
+        "due": 0,
+        "due_date": "2026-10-31",
+        "status": "paid",
+        "scholarship": {
+          "name": "XYZ Merit Scholarship",
+          "amount": 20000
+        },
+        "transactions": [
+          {
+            "date": "2026-07-25",
+            "amount": 20000,
+            "mode": "Scholarship",
+            "receipt_no": "XYZS-2026-01037"
+          },
+          {
+            "date": "2026-08-05",
+            "amount": 75000,
+            "mode": "Net Banking",
+            "receipt_no": "XYZR-2026-01074"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 91.0,
+        "courses": [
+          {
+            "code": "CS501",
+            "name": "Operating Systems",
+            "pct": 92.0
+          },
+          {
+            "code": "CS502",
+            "name": "Database Management Systems",
+            "pct": 90.0
+          },
+          {
+            "code": "CS503",
+            "name": "Computer Networks",
+            "pct": 94.0
+          },
+          {
+            "code": "CS504",
+            "name": "Theory of Computation",
+            "pct": 88.0
+          },
+          {
+            "code": "CS505",
+            "name": "Machine Learning (Elective I)",
+            "pct": 91.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 9.35,
+        "last_sgpa": 9.5,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "CS501",
+            "course_name": "Operating Systems",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "10:00-13:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "CS502",
+            "course_name": "Database Management Systems",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "10:00-13:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "CS503",
+            "course_name": "Computer Networks",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "10:00-13:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "CS504",
+            "course_name": "Theory of Computation",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "10:00-13:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "CS505",
+            "course_name": "Machine Learning (Elective I)",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "10:00-13:00",
+            "room": "LH-1"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ23CSE042",
+      "name": "Kabir Nair",
+      "branch": "CSE",
+      "year": 4,
+      "semester": 7,
+      "email": "kabir.nair042@xyz.edu.example",
+      "hostel": {
+        "block": "B",
+        "room": "B-108"
+      },
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 149000,
+        "paid": 89400,
+        "due": 59600,
+        "due_date": "2026-10-31",
+        "status": "overdue",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-08-13",
+            "amount": 89400,
+            "mode": "Debit Card",
+            "receipt_no": "XYZR-2026-01111"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-CS-0733",
+            "title": "Compiler Construction Basics",
+            "author": "S. Venkatesh",
+            "issue_date": "2026-09-28",
+            "due_date": "2026-10-12",
+            "status": "overdue"
+          },
+          {
+            "book_id": "LIB-CS-0802",
+            "title": "Applied Cloud Architecture",
+            "author": "P. Bhardwaj",
+            "issue_date": "2026-10-05",
+            "due_date": "2026-10-19",
+            "status": "overdue"
+          }
+        ],
+        "fine_due": 185
+      },
+      "attendance": {
+        "overall_pct": 68.4,
+        "courses": [
+          {
+            "code": "CS701",
+            "name": "Compiler Design",
+            "pct": 70.0
+          },
+          {
+            "code": "CS702",
+            "name": "Cloud Computing",
+            "pct": 66.0
+          },
+          {
+            "code": "CS703",
+            "name": "Deep Learning (Elective III)",
+            "pct": 72.0
+          },
+          {
+            "code": "CS704",
+            "name": "Information Security",
+            "pct": 64.0
+          },
+          {
+            "code": "HS701",
+            "name": "Professional Ethics",
+            "pct": 70.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 6.85,
+        "last_sgpa": 6.2,
+        "backlogs": 1
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "CS701",
+            "course_name": "Compiler Design",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "14:00-17:00",
+            "room": "LH-5"
+          },
+          {
+            "course_code": "CS702",
+            "course_name": "Cloud Computing",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "14:00-17:00",
+            "room": "LH-5"
+          },
+          {
+            "course_code": "CS703",
+            "course_name": "Deep Learning (Elective III)",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "14:00-17:00",
+            "room": "LH-5"
+          },
+          {
+            "course_code": "CS704",
+            "course_name": "Information Security",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "14:00-17:00",
+            "room": "LH-5"
+          },
+          {
+            "course_code": "HS701",
+            "course_name": "Professional Ethics",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "14:00-17:00",
+            "room": "LH-5"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ25CSE023",
+      "name": "Ananya Iyer",
+      "branch": "CSE",
+      "year": 2,
+      "semester": 3,
+      "email": "ananya.iyer023@xyz.edu.example",
+      "hostel": {
+        "block": "C",
+        "room": "C-305"
+      },
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 129000,
+        "paid": 129000,
+        "due": 0,
+        "due_date": "2026-10-31",
+        "status": "paid",
+        "scholarship": {
+          "name": "Girls in STEM Scholarship",
+          "amount": 15000
+        },
+        "transactions": [
+          {
+            "date": "2026-07-28",
+            "amount": 15000,
+            "mode": "Scholarship",
+            "receipt_no": "XYZS-2026-01148"
+          },
+          {
+            "date": "2026-08-02",
+            "amount": 114000,
+            "mode": "UPI",
+            "receipt_no": "XYZR-2026-01185"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-CS-0310",
+            "title": "Data Structures Through C++",
+            "author": "K. Lal",
+            "issue_date": "2026-10-27",
+            "due_date": "2026-11-10",
+            "status": "issued"
+          }
+        ],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 88.0,
+        "courses": [
+          {
+            "code": "CS301",
+            "name": "Data Structures",
+            "pct": 90.0
+          },
+          {
+            "code": "CS302",
+            "name": "Digital Logic Design",
+            "pct": 86.0
+          },
+          {
+            "code": "CS303",
+            "name": "Object Oriented Programming",
+            "pct": 92.0
+          },
+          {
+            "code": "MA301",
+            "name": "Discrete Mathematics",
+            "pct": 84.0
+          },
+          {
+            "code": "HS301",
+            "name": "Economics for Engineers",
+            "pct": 88.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 8.76,
+        "last_sgpa": 8.9,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "CS301",
+            "course_name": "Data Structures",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "14:00-17:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "CS302",
+            "course_name": "Digital Logic Design",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "14:00-17:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "CS303",
+            "course_name": "Object Oriented Programming",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "14:00-17:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "MA301",
+            "course_name": "Discrete Mathematics",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "14:00-17:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "HS301",
+            "course_name": "Economics for Engineers",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "14:00-17:00",
+            "room": "LH-1"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ26CSE005",
+      "name": "Rohan Gupta",
+      "branch": "CSE",
+      "year": 1,
+      "semester": 1,
+      "email": "rohan.gupta005@xyz.edu.example",
+      "hostel": {
+        "block": "D",
+        "room": "D-012"
+      },
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 149000,
+        "paid": 149000,
+        "due": 0,
+        "due_date": "2026-10-31",
+        "status": "paid",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-07-18",
+            "amount": 149000,
+            "mode": "NEFT",
+            "receipt_no": "XYZR-2026-01222"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-MA-0101",
+            "title": "Calculus for Engineers",
+            "author": "J. Sethi",
+            "issue_date": "2026-10-30",
+            "due_date": "2026-11-13",
+            "status": "issued"
+          }
+        ],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 85.0,
+        "courses": [
+          {
+            "code": "MA101",
+            "name": "Engineering Mathematics I",
+            "pct": 88.0
+          },
+          {
+            "code": "PH101",
+            "name": "Engineering Physics",
+            "pct": 82.0
+          },
+          {
+            "code": "CS101",
+            "name": "Programming for Problem Solving",
+            "pct": 90.0
+          },
+          {
+            "code": "ME101",
+            "name": "Engineering Graphics",
+            "pct": 80.0
+          },
+          {
+            "code": "HS101",
+            "name": "Communication Skills",
+            "pct": 85.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": null,
+        "last_sgpa": null,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "MA101",
+            "course_name": "Engineering Mathematics I",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "10:00-13:00",
+            "room": "EH-1"
+          },
+          {
+            "course_code": "PH101",
+            "course_name": "Engineering Physics",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "10:00-13:00",
+            "room": "EH-1"
+          },
+          {
+            "course_code": "CS101",
+            "course_name": "Programming for Problem Solving",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "10:00-13:00",
+            "room": "EH-1"
+          },
+          {
+            "course_code": "ME101",
+            "course_name": "Engineering Graphics",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "10:00-13:00",
+            "room": "EH-1"
+          },
+          {
+            "course_code": "HS101",
+            "course_name": "Communication Skills",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "10:00-13:00",
+            "room": "EH-1"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ24ECE014",
+      "name": "Sneha Reddy",
+      "branch": "ECE",
+      "year": 3,
+      "semester": 5,
+      "email": "sneha.reddy014@xyz.edu.example",
+      "hostel": null,
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 35000,
+        "paid": 35000,
+        "due": 0,
+        "due_date": "2026-10-31",
+        "status": "paid",
+        "scholarship": {
+          "name": "SC/ST Tuition Scholarship",
+          "amount": 20000
+        },
+        "transactions": [
+          {
+            "date": "2026-07-30",
+            "amount": 20000,
+            "mode": "Scholarship",
+            "receipt_no": "XYZS-2026-01259"
+          },
+          {
+            "date": "2026-08-06",
+            "amount": 15000,
+            "mode": "UPI",
+            "receipt_no": "XYZR-2026-01296"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-EC-0215",
+            "title": "Digital Signal Processing Fundamentals",
+            "author": "V. Krishnan",
+            "issue_date": "2026-10-26",
+            "due_date": "2026-11-09",
+            "status": "issued"
+          }
+        ],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 88.0,
+        "courses": [
+          {
+            "code": "EC501",
+            "name": "Digital Signal Processing",
+            "pct": 88.0
+          },
+          {
+            "code": "EC502",
+            "name": "Analog Communication",
+            "pct": 86.0
+          },
+          {
+            "code": "EC503",
+            "name": "Microprocessors and Microcontrollers",
+            "pct": 90.0
+          },
+          {
+            "code": "EC504",
+            "name": "Control Systems",
+            "pct": 87.0
+          },
+          {
+            "code": "EC505",
+            "name": "VLSI Design",
+            "pct": 89.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 7.98,
+        "last_sgpa": 8.1,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "EC501",
+            "course_name": "Digital Signal Processing",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "10:00-13:00",
+            "room": "LH-2"
+          },
+          {
+            "course_code": "EC502",
+            "course_name": "Analog Communication",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "10:00-13:00",
+            "room": "LH-2"
+          },
+          {
+            "course_code": "EC503",
+            "course_name": "Microprocessors and Microcontrollers",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "10:00-13:00",
+            "room": "LH-2"
+          },
+          {
+            "course_code": "EC504",
+            "course_name": "Control Systems",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "10:00-13:00",
+            "room": "LH-2"
+          },
+          {
+            "course_code": "EC505",
+            "course_name": "VLSI Design",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "10:00-13:00",
+            "room": "LH-2"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ23ECE014",
+      "name": "Vikram Singh",
+      "branch": "ECE",
+      "year": 4,
+      "semester": 7,
+      "email": "vikram.singh014@xyz.edu.example",
+      "hostel": {
+        "block": "A",
+        "room": "A-321"
+      },
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 149000,
+        "paid": 149000,
+        "due": 0,
+        "due_date": "2026-10-31",
+        "status": "paid",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-08-01",
+            "amount": 149000,
+            "mode": "Net Banking",
+            "receipt_no": "XYZR-2026-01333"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-EC-0340",
+            "title": "Wireless Communication Systems",
+            "author": "H. Saxena",
+            "issue_date": "2026-10-08",
+            "due_date": "2026-10-22",
+            "status": "overdue"
+          },
+          {
+            "book_id": "LIB-EC-0388",
+            "title": "Embedded Systems Design",
+            "author": "L. Fernandes",
+            "issue_date": "2026-10-25",
+            "due_date": "2026-11-08",
+            "status": "issued"
+          },
+          {
+            "book_id": "LIB-GN-0042",
+            "title": "Soft Skills for Engineers",
+            "author": "Y. Arora",
+            "issue_date": "2026-10-25",
+            "due_date": "2026-11-08",
+            "status": "issued"
+          }
+        ],
+        "fine_due": 60
+      },
+      "attendance": {
+        "overall_pct": 73.2,
+        "courses": [
+          {
+            "code": "EC701",
+            "name": "Wireless Communication",
+            "pct": 74.0
+          },
+          {
+            "code": "EC702",
+            "name": "Embedded Systems",
+            "pct": 72.0
+          },
+          {
+            "code": "EC703",
+            "name": "Optical Communication",
+            "pct": 76.0
+          },
+          {
+            "code": "EC704",
+            "name": "IoT Systems (Elective III)",
+            "pct": 70.0
+          },
+          {
+            "code": "HS701",
+            "name": "Professional Ethics",
+            "pct": 74.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 7.45,
+        "last_sgpa": 7.2,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "EC701",
+            "course_name": "Wireless Communication",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "14:00-17:00",
+            "room": "LH-6"
+          },
+          {
+            "course_code": "EC702",
+            "course_name": "Embedded Systems",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "14:00-17:00",
+            "room": "LH-6"
+          },
+          {
+            "course_code": "EC703",
+            "course_name": "Optical Communication",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "14:00-17:00",
+            "room": "LH-6"
+          },
+          {
+            "course_code": "EC704",
+            "course_name": "IoT Systems (Elective III)",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "14:00-17:00",
+            "room": "LH-6"
+          },
+          {
+            "course_code": "HS701",
+            "course_name": "Professional Ethics",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "14:00-17:00",
+            "room": "LH-6"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ25ECE031",
+      "name": "Meera Joshi",
+      "branch": "ECE",
+      "year": 2,
+      "semester": 3,
+      "email": "meera.joshi031@xyz.edu.example",
+      "hostel": null,
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 95000,
+        "paid": 57000,
+        "due": 38000,
+        "due_date": "2026-11-30",
+        "status": "partially_paid",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-08-12",
+            "amount": 57000,
+            "mode": "UPI",
+            "receipt_no": "XYZR-2026-01370"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 79.0,
+        "courses": [
+          {
+            "code": "EC301",
+            "name": "Network Analysis",
+            "pct": 80.0
+          },
+          {
+            "code": "EC302",
+            "name": "Electronic Devices",
+            "pct": 76.0
+          },
+          {
+            "code": "EC303",
+            "name": "Signals and Systems",
+            "pct": 82.0
+          },
+          {
+            "code": "MA302",
+            "name": "Probability and Random Processes",
+            "pct": 78.0
+          },
+          {
+            "code": "HS301",
+            "name": "Economics for Engineers",
+            "pct": 79.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 7.62,
+        "last_sgpa": 7.8,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "EC301",
+            "course_name": "Network Analysis",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "14:00-17:00",
+            "room": "LH-2"
+          },
+          {
+            "course_code": "EC302",
+            "course_name": "Electronic Devices",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "14:00-17:00",
+            "room": "LH-2"
+          },
+          {
+            "course_code": "EC303",
+            "course_name": "Signals and Systems",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "14:00-17:00",
+            "room": "LH-2"
+          },
+          {
+            "course_code": "MA302",
+            "course_name": "Probability and Random Processes",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "14:00-17:00",
+            "room": "LH-2"
+          },
+          {
+            "course_code": "HS301",
+            "course_name": "Economics for Engineers",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "14:00-17:00",
+            "room": "LH-2"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ26ECE009",
+      "name": "Arjun Das",
+      "branch": "ECE",
+      "year": 1,
+      "semester": 1,
+      "email": "arjun.das009@xyz.edu.example",
+      "hostel": {
+        "block": "D",
+        "room": "D-118"
+      },
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 129000,
+        "paid": 77400,
+        "due": 51600,
+        "due_date": "2026-10-31",
+        "status": "overdue",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-08-14",
+            "amount": 77400,
+            "mode": "UPI",
+            "receipt_no": "XYZR-2026-01407"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 61.5,
+        "courses": [
+          {
+            "code": "MA101",
+            "name": "Engineering Mathematics I",
+            "pct": 62.0
+          },
+          {
+            "code": "PH101",
+            "name": "Engineering Physics",
+            "pct": 58.0
+          },
+          {
+            "code": "CS101",
+            "name": "Programming for Problem Solving",
+            "pct": 66.0
+          },
+          {
+            "code": "ME101",
+            "name": "Engineering Graphics",
+            "pct": 60.0
+          },
+          {
+            "code": "HS101",
+            "name": "Communication Skills",
+            "pct": 61.5
+          }
+        ]
+      },
+      "results": {
+        "cgpa": null,
+        "last_sgpa": null,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "MA101",
+            "course_name": "Engineering Mathematics I",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "10:00-13:00",
+            "room": "EH-1"
+          },
+          {
+            "course_code": "PH101",
+            "course_name": "Engineering Physics",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "10:00-13:00",
+            "room": "EH-1"
+          },
+          {
+            "course_code": "CS101",
+            "course_name": "Programming for Problem Solving",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "10:00-13:00",
+            "room": "EH-1"
+          },
+          {
+            "course_code": "ME101",
+            "course_name": "Engineering Graphics",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "10:00-13:00",
+            "room": "EH-1"
+          },
+          {
+            "course_code": "HS101",
+            "course_name": "Communication Skills",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "10:00-13:00",
+            "room": "EH-1"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ24ME007",
+      "name": "Rahul Verma",
+      "branch": "ME",
+      "year": 3,
+      "semester": 5,
+      "email": "rahul.verma007@xyz.edu.example",
+      "hostel": {
+        "block": "B",
+        "room": "B-215"
+      },
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 149000,
+        "paid": 74500,
+        "due": 74500,
+        "due_date": "2026-10-31",
+        "status": "overdue",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-08-14",
+            "amount": 74500,
+            "mode": "Net Banking",
+            "receipt_no": "XYZR-2026-01444"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-ME-0144",
+            "title": "Heat and Mass Transfer",
+            "author": "D. Chawla",
+            "issue_date": "2026-10-01",
+            "due_date": "2026-10-15",
+            "status": "overdue"
+          }
+        ],
+        "fine_due": 95
+      },
+      "attendance": {
+        "overall_pct": 70.8,
+        "courses": [
+          {
+            "code": "ME501",
+            "name": "Heat Transfer",
+            "pct": 72.0
+          },
+          {
+            "code": "ME502",
+            "name": "Design of Machine Elements",
+            "pct": 68.0
+          },
+          {
+            "code": "ME503",
+            "name": "Fluid Machinery",
+            "pct": 74.0
+          },
+          {
+            "code": "ME504",
+            "name": "Dynamics of Machinery",
+            "pct": 70.0
+          },
+          {
+            "code": "ME505",
+            "name": "Automobile Engineering (Elective I)",
+            "pct": 70.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 6.12,
+        "last_sgpa": 5.8,
+        "backlogs": 3
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "ME501",
+            "course_name": "Heat Transfer",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "10:00-13:00",
+            "room": "LH-3"
+          },
+          {
+            "course_code": "ME502",
+            "course_name": "Design of Machine Elements",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "10:00-13:00",
+            "room": "LH-3"
+          },
+          {
+            "course_code": "ME503",
+            "course_name": "Fluid Machinery",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "10:00-13:00",
+            "room": "LH-3"
+          },
+          {
+            "course_code": "ME504",
+            "course_name": "Dynamics of Machinery",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "10:00-13:00",
+            "room": "LH-3"
+          },
+          {
+            "course_code": "ME505",
+            "course_name": "Automobile Engineering (Elective I)",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "10:00-13:00",
+            "room": "LH-3"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ25ME007",
+      "name": "Priya Menon",
+      "branch": "ME",
+      "year": 2,
+      "semester": 3,
+      "email": "priya.menon007@xyz.edu.example",
+      "hostel": null,
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 95000,
+        "paid": 95000,
+        "due": 0,
+        "due_date": "2026-10-31",
+        "status": "paid",
+        "scholarship": {
+          "name": "XYZ Need-based Scholarship",
+          "amount": 30000
+        },
+        "transactions": [
+          {
+            "date": "2026-07-29",
+            "amount": 30000,
+            "mode": "Scholarship",
+            "receipt_no": "XYZS-2026-01481"
+          },
+          {
+            "date": "2026-08-08",
+            "amount": 65000,
+            "mode": "UPI",
+            "receipt_no": "XYZR-2026-01518"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-ME-0290",
+            "title": "Machine Design Data Book",
+            "author": "B. Kamath",
+            "issue_date": "2026-10-14",
+            "due_date": "2026-10-28",
+            "status": "overdue"
+          }
+        ],
+        "fine_due": 30
+      },
+      "attendance": {
+        "overall_pct": 85.0,
+        "courses": [
+          {
+            "code": "ME301",
+            "name": "Engineering Thermodynamics",
+            "pct": 86.0
+          },
+          {
+            "code": "ME302",
+            "name": "Strength of Materials",
+            "pct": 84.0
+          },
+          {
+            "code": "ME303",
+            "name": "Manufacturing Processes",
+            "pct": 88.0
+          },
+          {
+            "code": "MA303",
+            "name": "Numerical Methods",
+            "pct": 82.0
+          },
+          {
+            "code": "HS301",
+            "name": "Economics for Engineers",
+            "pct": 85.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 8.05,
+        "last_sgpa": 8.2,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "ME301",
+            "course_name": "Engineering Thermodynamics",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "14:00-17:00",
+            "room": "LH-3"
+          },
+          {
+            "course_code": "ME302",
+            "course_name": "Strength of Materials",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "14:00-17:00",
+            "room": "LH-3"
+          },
+          {
+            "course_code": "ME303",
+            "course_name": "Manufacturing Processes",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "14:00-17:00",
+            "room": "LH-3"
+          },
+          {
+            "course_code": "MA303",
+            "course_name": "Numerical Methods",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "14:00-17:00",
+            "room": "LH-3"
+          },
+          {
+            "course_code": "HS301",
+            "course_name": "Economics for Engineers",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "14:00-17:00",
+            "room": "LH-3"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ23ME019",
+      "name": "Siddharth Rao",
+      "branch": "ME",
+      "year": 4,
+      "semester": 7,
+      "email": "siddharth.rao019@xyz.edu.example",
+      "hostel": null,
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 75000,
+        "paid": 75000,
+        "due": 0,
+        "due_date": "2026-10-31",
+        "status": "paid",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-07-31",
+            "amount": 75000,
+            "mode": "Net Banking",
+            "receipt_no": "XYZR-2026-01555"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 85.0,
+        "courses": [
+          {
+            "code": "ME701",
+            "name": "Finite Element Analysis",
+            "pct": 86.0
+          },
+          {
+            "code": "ME702",
+            "name": "Refrigeration and Air Conditioning",
+            "pct": 84.0
+          },
+          {
+            "code": "ME703",
+            "name": "Operations Research",
+            "pct": 88.0
+          },
+          {
+            "code": "ME704",
+            "name": "Robotics (Elective III)",
+            "pct": 82.0
+          },
+          {
+            "code": "HS701",
+            "name": "Professional Ethics",
+            "pct": 85.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 7.9,
+        "last_sgpa": 8.0,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "ME701",
+            "course_name": "Finite Element Analysis",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "14:00-17:00",
+            "room": "LH-7"
+          },
+          {
+            "course_code": "ME702",
+            "course_name": "Refrigeration and Air Conditioning",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "14:00-17:00",
+            "room": "LH-7"
+          },
+          {
+            "course_code": "ME703",
+            "course_name": "Operations Research",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "14:00-17:00",
+            "room": "LH-7"
+          },
+          {
+            "course_code": "ME704",
+            "course_name": "Robotics (Elective III)",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "14:00-17:00",
+            "room": "LH-7"
+          },
+          {
+            "course_code": "HS701",
+            "course_name": "Professional Ethics",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "14:00-17:00",
+            "room": "LH-7"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ26ME002",
+      "name": "Ishaan Kulkarni",
+      "branch": "ME",
+      "year": 1,
+      "semester": 1,
+      "email": "ishaan.kulkarni002@xyz.edu.example",
+      "hostel": {
+        "block": "D",
+        "room": "D-204"
+      },
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 149000,
+        "paid": 74500,
+        "due": 74500,
+        "due_date": "2026-11-30",
+        "status": "partially_paid",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-08-11",
+            "amount": 74500,
+            "mode": "UPI",
+            "receipt_no": "XYZR-2026-01592"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-ME-0056",
+            "title": "Engineering Drawing Practice",
+            "author": "T. Mehra",
+            "issue_date": "2026-10-29",
+            "due_date": "2026-11-12",
+            "status": "issued"
+          }
+        ],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 80.0,
+        "courses": [
+          {
+            "code": "MA101",
+            "name": "Engineering Mathematics I",
+            "pct": 80.0
+          },
+          {
+            "code": "PH101",
+            "name": "Engineering Physics",
+            "pct": 78.0
+          },
+          {
+            "code": "CS101",
+            "name": "Programming for Problem Solving",
+            "pct": 84.0
+          },
+          {
+            "code": "ME101",
+            "name": "Engineering Graphics",
+            "pct": 82.0
+          },
+          {
+            "code": "HS101",
+            "name": "Communication Skills",
+            "pct": 76.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": null,
+        "last_sgpa": null,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "MA101",
+            "course_name": "Engineering Mathematics I",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "10:00-13:00",
+            "room": "EH-2"
+          },
+          {
+            "course_code": "PH101",
+            "course_name": "Engineering Physics",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "10:00-13:00",
+            "room": "EH-2"
+          },
+          {
+            "course_code": "CS101",
+            "course_name": "Programming for Problem Solving",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "10:00-13:00",
+            "room": "EH-2"
+          },
+          {
+            "course_code": "ME101",
+            "course_name": "Engineering Graphics",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "10:00-13:00",
+            "room": "EH-2"
+          },
+          {
+            "course_code": "HS101",
+            "course_name": "Communication Skills",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "10:00-13:00",
+            "room": "EH-2"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ24CE011",
+      "name": "Kavya Pillai",
+      "branch": "CE",
+      "year": 3,
+      "semester": 5,
+      "email": "kavya.pillai011@xyz.edu.example",
+      "hostel": {
+        "block": "C",
+        "room": "C-112"
+      },
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 89000,
+        "paid": 89000,
+        "due": 0,
+        "due_date": "2026-10-31",
+        "status": "paid",
+        "scholarship": {
+          "name": "SC/ST Tuition Scholarship",
+          "amount": 20000
+        },
+        "transactions": [
+          {
+            "date": "2026-07-27",
+            "amount": 20000,
+            "mode": "Scholarship",
+            "receipt_no": "XYZS-2026-01629"
+          },
+          {
+            "date": "2026-08-04",
+            "amount": 69000,
+            "mode": "Debit Card",
+            "receipt_no": "XYZR-2026-01666"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-CE-0233",
+            "title": "Structural Analysis Vol. 1",
+            "author": "U. Rathore",
+            "issue_date": "2026-10-22",
+            "due_date": "2026-11-05",
+            "status": "issued"
+          }
+        ],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 77.0,
+        "courses": [
+          {
+            "code": "CE501",
+            "name": "Structural Analysis",
+            "pct": 78.0
+          },
+          {
+            "code": "CE502",
+            "name": "Geotechnical Engineering",
+            "pct": 76.0
+          },
+          {
+            "code": "CE503",
+            "name": "Transportation Engineering",
+            "pct": 79.0
+          },
+          {
+            "code": "CE504",
+            "name": "Environmental Engineering",
+            "pct": 75.0
+          },
+          {
+            "code": "CE505",
+            "name": "Remote Sensing and GIS (Elective I)",
+            "pct": 77.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 7.34,
+        "last_sgpa": 7.5,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "CE501",
+            "course_name": "Structural Analysis",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "10:00-13:00",
+            "room": "LH-4"
+          },
+          {
+            "course_code": "CE502",
+            "course_name": "Geotechnical Engineering",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "10:00-13:00",
+            "room": "LH-4"
+          },
+          {
+            "course_code": "CE503",
+            "course_name": "Transportation Engineering",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "10:00-13:00",
+            "room": "LH-4"
+          },
+          {
+            "course_code": "CE504",
+            "course_name": "Environmental Engineering",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "10:00-13:00",
+            "room": "LH-4"
+          },
+          {
+            "course_code": "CE505",
+            "course_name": "Remote Sensing and GIS (Elective I)",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "10:00-13:00",
+            "room": "LH-4"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ22CE003",
+      "name": "Manish Yadav",
+      "branch": "CE",
+      "year": 4,
+      "semester": 7,
+      "email": "manish.yadav003@xyz.edu.example",
+      "hostel": null,
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 95000,
+        "paid": 47500,
+        "due": 47500,
+        "due_date": "2026-10-31",
+        "status": "overdue",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-08-14",
+            "amount": 47500,
+            "mode": "UPI",
+            "receipt_no": "XYZR-2026-01703"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-CE-0318",
+            "title": "Estimation and Costing in Civil Engineering",
+            "author": "F. Ansari",
+            "issue_date": "2026-09-30",
+            "due_date": "2026-10-14",
+            "status": "overdue"
+          },
+          {
+            "book_id": "LIB-CE-0199",
+            "title": "Fluid Mechanics for Civil Engineers",
+            "author": "E. Bhatt",
+            "issue_date": "2026-10-06",
+            "due_date": "2026-10-20",
+            "status": "overdue"
+          }
+        ],
+        "fine_due": 170
+      },
+      "attendance": {
+        "overall_pct": 66.0,
+        "courses": [
+          {
+            "code": "CE701",
+            "name": "Design of Steel Structures",
+            "pct": 68.0
+          },
+          {
+            "code": "CE702",
+            "name": "Estimation and Costing",
+            "pct": 64.0
+          },
+          {
+            "code": "CE703",
+            "name": "Water Resources Engineering",
+            "pct": 70.0
+          },
+          {
+            "code": "CE704",
+            "name": "Earthquake Engineering (Elective III)",
+            "pct": 62.0
+          },
+          {
+            "code": "HS701",
+            "name": "Professional Ethics",
+            "pct": 66.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 5.84,
+        "last_sgpa": 5.6,
+        "backlogs": 2
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "CE701",
+            "course_name": "Design of Steel Structures",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "14:00-17:00",
+            "room": "LH-8"
+          },
+          {
+            "course_code": "CE702",
+            "course_name": "Estimation and Costing",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "14:00-17:00",
+            "room": "LH-8"
+          },
+          {
+            "course_code": "CE703",
+            "course_name": "Water Resources Engineering",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "14:00-17:00",
+            "room": "LH-8"
+          },
+          {
+            "course_code": "CE704",
+            "course_name": "Earthquake Engineering (Elective III)",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "14:00-17:00",
+            "room": "LH-8"
+          },
+          {
+            "course_code": "HS701",
+            "course_name": "Professional Ethics",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "14:00-17:00",
+            "room": "LH-8"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ25CE008",
+      "name": "Neha Bansal",
+      "branch": "CE",
+      "year": 2,
+      "semester": 3,
+      "email": "neha.bansal008@xyz.edu.example",
+      "hostel": {
+        "block": "C",
+        "room": "C-220"
+      },
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 149000,
+        "paid": 149000,
+        "due": 0,
+        "due_date": "2026-10-31",
+        "status": "paid",
+        "scholarship": {
+          "name": "XYZ Sports Scholarship",
+          "amount": 10000
+        },
+        "transactions": [
+          {
+            "date": "2026-07-26",
+            "amount": 10000,
+            "mode": "Scholarship",
+            "receipt_no": "XYZS-2026-01740"
+          },
+          {
+            "date": "2026-08-03",
+            "amount": 139000,
+            "mode": "NEFT",
+            "receipt_no": "XYZR-2026-01777"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-CE-0175",
+            "title": "Surveying and Levelling",
+            "author": "C. Dutta",
+            "issue_date": "2026-10-21",
+            "due_date": "2026-11-04",
+            "status": "issued"
+          },
+          {
+            "book_id": "LIB-CE-0199",
+            "title": "Fluid Mechanics for Civil Engineers",
+            "author": "E. Bhatt",
+            "issue_date": "2026-10-30",
+            "due_date": "2026-11-13",
+            "status": "issued"
+          }
+        ],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 81.0,
+        "courses": [
+          {
+            "code": "CE301",
+            "name": "Surveying",
+            "pct": 82.0
+          },
+          {
+            "code": "CE302",
+            "name": "Fluid Mechanics",
+            "pct": 80.0
+          },
+          {
+            "code": "CE303",
+            "name": "Building Materials and Construction",
+            "pct": 84.0
+          },
+          {
+            "code": "MA303",
+            "name": "Numerical Methods",
+            "pct": 78.0
+          },
+          {
+            "code": "HS301",
+            "name": "Economics for Engineers",
+            "pct": 81.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 7.71,
+        "last_sgpa": 7.9,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "CE301",
+            "course_name": "Surveying",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "14:00-17:00",
+            "room": "LH-4"
+          },
+          {
+            "course_code": "CE302",
+            "course_name": "Fluid Mechanics",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "14:00-17:00",
+            "room": "LH-4"
+          },
+          {
+            "course_code": "CE303",
+            "course_name": "Building Materials and Construction",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "14:00-17:00",
+            "room": "LH-4"
+          },
+          {
+            "course_code": "MA303",
+            "course_name": "Numerical Methods",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "14:00-17:00",
+            "room": "LH-4"
+          },
+          {
+            "course_code": "HS301",
+            "course_name": "Economics for Engineers",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "14:00-17:00",
+            "room": "LH-4"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ26CE015",
+      "name": "Tanvi Shah",
+      "branch": "CE",
+      "year": 1,
+      "semester": 1,
+      "email": "tanvi.shah015@xyz.edu.example",
+      "hostel": null,
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 75000,
+        "paid": 75000,
+        "due": 0,
+        "due_date": "2026-10-31",
+        "status": "paid",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-07-17",
+            "amount": 75000,
+            "mode": "UPI",
+            "receipt_no": "XYZR-2026-01814"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 94.0,
+        "courses": [
+          {
+            "code": "MA101",
+            "name": "Engineering Mathematics I",
+            "pct": 95.0
+          },
+          {
+            "code": "PH101",
+            "name": "Engineering Physics",
+            "pct": 93.0
+          },
+          {
+            "code": "CS101",
+            "name": "Programming for Problem Solving",
+            "pct": 96.0
+          },
+          {
+            "code": "ME101",
+            "name": "Engineering Graphics",
+            "pct": 92.0
+          },
+          {
+            "code": "HS101",
+            "name": "Communication Skills",
+            "pct": 94.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": null,
+        "last_sgpa": null,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "MA101",
+            "course_name": "Engineering Mathematics I",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "10:00-13:00",
+            "room": "EH-2"
+          },
+          {
+            "course_code": "PH101",
+            "course_name": "Engineering Physics",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "10:00-13:00",
+            "room": "EH-2"
+          },
+          {
+            "course_code": "CS101",
+            "course_name": "Programming for Problem Solving",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "10:00-13:00",
+            "room": "EH-2"
+          },
+          {
+            "course_code": "ME101",
+            "course_name": "Engineering Graphics",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "10:00-13:00",
+            "room": "EH-2"
+          },
+          {
+            "course_code": "HS101",
+            "course_name": "Communication Skills",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "10:00-13:00",
+            "room": "EH-2"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ23CSE008",
+      "name": "Aditya Mishra",
+      "branch": "CSE",
+      "year": 4,
+      "semester": 7,
+      "email": "aditya.mishra008@xyz.edu.example",
+      "hostel": null,
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 95000,
+        "paid": 95000,
+        "due": 0,
+        "due_date": "2026-10-31",
+        "status": "paid",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-07-30",
+            "amount": 95000,
+            "mode": "Credit Card",
+            "receipt_no": "XYZR-2026-01851"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-CS-0905",
+            "title": "Introduction to Deep Learning",
+            "author": "R. Sundaram",
+            "issue_date": "2026-10-15",
+            "due_date": "2026-10-29",
+            "status": "overdue"
+          },
+          {
+            "book_id": "LIB-CS-0611",
+            "title": "Network Security Essentials for Engineers",
+            "author": "M. Thakur",
+            "issue_date": "2026-10-26",
+            "due_date": "2026-11-09",
+            "status": "issued"
+          },
+          {
+            "book_id": "LIB-CS-0802",
+            "title": "Applied Cloud Architecture",
+            "author": "P. Bhardwaj",
+            "issue_date": "2026-10-26",
+            "due_date": "2026-11-09",
+            "status": "issued"
+          },
+          {
+            "book_id": "LIB-GN-0042",
+            "title": "Soft Skills for Engineers",
+            "author": "Y. Arora",
+            "issue_date": "2026-10-31",
+            "due_date": "2026-11-14",
+            "status": "issued"
+          }
+        ],
+        "fine_due": 25
+      },
+      "attendance": {
+        "overall_pct": 89.0,
+        "courses": [
+          {
+            "code": "CS701",
+            "name": "Compiler Design",
+            "pct": 90.0
+          },
+          {
+            "code": "CS702",
+            "name": "Cloud Computing",
+            "pct": 88.0
+          },
+          {
+            "code": "CS703",
+            "name": "Deep Learning (Elective III)",
+            "pct": 92.0
+          },
+          {
+            "code": "CS704",
+            "name": "Information Security",
+            "pct": 86.0
+          },
+          {
+            "code": "HS701",
+            "name": "Professional Ethics",
+            "pct": 89.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 8.9,
+        "last_sgpa": 9.1,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "CS701",
+            "course_name": "Compiler Design",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "14:00-17:00",
+            "room": "LH-5"
+          },
+          {
+            "course_code": "CS702",
+            "course_name": "Cloud Computing",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "14:00-17:00",
+            "room": "LH-5"
+          },
+          {
+            "course_code": "CS703",
+            "course_name": "Deep Learning (Elective III)",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "14:00-17:00",
+            "room": "LH-5"
+          },
+          {
+            "course_code": "CS704",
+            "course_name": "Information Security",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "14:00-17:00",
+            "room": "LH-5"
+          },
+          {
+            "course_code": "HS701",
+            "course_name": "Professional Ethics",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "14:00-17:00",
+            "room": "LH-5"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ24ECE027",
+      "name": "Pooja Chauhan",
+      "branch": "ECE",
+      "year": 3,
+      "semester": 5,
+      "email": "pooja.chauhan027@xyz.edu.example",
+      "hostel": {
+        "block": "C",
+        "room": "C-118"
+      },
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 149000,
+        "paid": 100000,
+        "due": 49000,
+        "due_date": "2026-11-30",
+        "status": "partially_paid",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-08-09",
+            "amount": 100000,
+            "mode": "Net Banking",
+            "receipt_no": "XYZR-2026-01888"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [
+          {
+            "book_id": "LIB-EC-0122",
+            "title": "Network Analysis and Synthesis",
+            "author": "G. Pandey",
+            "issue_date": "2026-10-23",
+            "due_date": "2026-11-06",
+            "status": "issued"
+          }
+        ],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 74.0,
+        "courses": [
+          {
+            "code": "EC501",
+            "name": "Digital Signal Processing",
+            "pct": 76.0
+          },
+          {
+            "code": "EC502",
+            "name": "Analog Communication",
+            "pct": 72.0
+          },
+          {
+            "code": "EC503",
+            "name": "Microprocessors and Microcontrollers",
+            "pct": 75.0
+          },
+          {
+            "code": "EC504",
+            "name": "Control Systems",
+            "pct": 72.0
+          },
+          {
+            "code": "EC505",
+            "name": "VLSI Design",
+            "pct": 75.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 6.95,
+        "last_sgpa": 6.7,
+        "backlogs": 1
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "EC501",
+            "course_name": "Digital Signal Processing",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "10:00-13:00",
+            "room": "LH-2"
+          },
+          {
+            "course_code": "EC502",
+            "course_name": "Analog Communication",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "10:00-13:00",
+            "room": "LH-2"
+          },
+          {
+            "course_code": "EC503",
+            "course_name": "Microprocessors and Microcontrollers",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "10:00-13:00",
+            "room": "LH-2"
+          },
+          {
+            "course_code": "EC504",
+            "course_name": "Control Systems",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "10:00-13:00",
+            "room": "LH-2"
+          },
+          {
+            "course_code": "EC505",
+            "course_name": "VLSI Design",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "10:00-13:00",
+            "room": "LH-2"
+          }
+        ]
+      }
+    },
+    {
+      "student_id": "XYZ25CSE040",
+      "name": "Farhan Qureshi",
+      "branch": "CSE",
+      "year": 2,
+      "semester": 3,
+      "email": "farhan.qureshi040@xyz.edu.example",
+      "hostel": null,
+      "fees": {
+        "semester": "Odd 2026-27",
+        "total": 75000,
+        "paid": 37500,
+        "due": 37500,
+        "due_date": "2026-10-31",
+        "status": "overdue",
+        "scholarship": null,
+        "transactions": [
+          {
+            "date": "2026-08-14",
+            "amount": 37500,
+            "mode": "UPI",
+            "receipt_no": "XYZR-2026-01925"
+          }
+        ]
+      },
+      "library": {
+        "books_issued": [],
+        "fine_due": 0
+      },
+      "attendance": {
+        "overall_pct": 80.0,
+        "courses": [
+          {
+            "code": "CS301",
+            "name": "Data Structures",
+            "pct": 82.0
+          },
+          {
+            "code": "CS302",
+            "name": "Digital Logic Design",
+            "pct": 78.0
+          },
+          {
+            "code": "CS303",
+            "name": "Object Oriented Programming",
+            "pct": 80.0
+          },
+          {
+            "code": "MA301",
+            "name": "Discrete Mathematics",
+            "pct": 79.0
+          },
+          {
+            "code": "HS301",
+            "name": "Economics for Engineers",
+            "pct": 81.0
+          }
+        ]
+      },
+      "results": {
+        "cgpa": 7.18,
+        "last_sgpa": 7.3,
+        "backlogs": 0
+      },
+      "exams": {
+        "upcoming": [
+          {
+            "course_code": "CS301",
+            "course_name": "Data Structures",
+            "type": "End-Sem",
+            "date": "2026-12-01",
+            "time": "14:00-17:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "CS302",
+            "course_name": "Digital Logic Design",
+            "type": "End-Sem",
+            "date": "2026-12-03",
+            "time": "14:00-17:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "CS303",
+            "course_name": "Object Oriented Programming",
+            "type": "End-Sem",
+            "date": "2026-12-05",
+            "time": "14:00-17:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "MA301",
+            "course_name": "Discrete Mathematics",
+            "type": "End-Sem",
+            "date": "2026-12-08",
+            "time": "14:00-17:00",
+            "room": "LH-1"
+          },
+          {
+            "course_code": "HS301",
+            "course_name": "Economics for Engineers",
+            "type": "End-Sem",
+            "date": "2026-12-10",
+            "time": "14:00-17:00",
+            "room": "LH-1"
+          }
+        ]
+      }
+    }
+  ]
+}

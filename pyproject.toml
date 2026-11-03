@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smart-campus-assistant"
+version = "0.1.0"
+description = "Cost-aware agentic RAG for college admission questions: a router sends simple questions to fast RAG and complex ones to deep research."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph",
+    "langchain-aws",
+    "langchain-community",
+    "langchain-text-splitters",
+    "pypdf",
+    "boto3",
+    "python-dotenv",
+    "streamlit",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "langgraph-cli[inmem]"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

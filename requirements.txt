@@ -1,0 +1,10 @@
+langgraph
+langchain-aws
+langchain-community
+langchain-text-splitters
+pypdf
+boto3
+python-dotenv
+streamlit
+langgraph-cli[inmem]
+pytest

@@ -1,0 +1,27 @@
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#5B5BD6"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFontWeights = [700, 650, 600, 600, 600, 600]
+codeFont = "monospace"
+baseRadius = "0.6rem"
+buttonRadius = "0.6rem"
+showSidebarBorder = true
+chartCategoricalColors = ["#5B5BD6", "#D95926", "#0E9F6E", "#7C3AED"]
+
+[theme.light]
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F6F7FB"
+textColor = "#1A1C2E"
+borderColor = "#E4E6EF"
+
+[theme.dark]
+backgroundColor = "#0F1117"
+secondaryBackgroundColor = "#181B24"
+textColor = "#E8E9F0"
+borderColor = "#2A2E3B"

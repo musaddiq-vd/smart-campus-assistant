@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "smart_campus_assistant": "./src/smart_campus_assistant/graph.py:graph"
+  },
+  "env": ".env"
+}

@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Secrets
+.env
+data/users.json
+data/sessions.json
+data/demo_credentials.csv
+
+# Local notes for Claude (keep off GitHub)
+CLAUDE.md
+
+# Large source PDFs (download again from official sites)
+data/raw/**/*.pdf
+
+# Outputs
+eval/results/
+.langgraph_api/
