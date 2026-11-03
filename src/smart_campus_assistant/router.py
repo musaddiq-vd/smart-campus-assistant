@@ -37,7 +37,7 @@ FIRST_PERSON = re.compile(
 PERSONAL_TOPICS = re.compile(
     r"\b(fee|fees|dues?|pending|paid|payment|receipt|scholarship|books?|issued?|fine|fines|library|"
     r"attendance|result|results|cgpa|sgpa|gpa|marks|backlogs?|exams?|hall ticket|admit card|"
-    r"hostel room|room|roll)\b"
+    r"hostel room|room|roll|semesters?|semister|sem|subjects?|subjests?|courses?)\b"
 )
 
 

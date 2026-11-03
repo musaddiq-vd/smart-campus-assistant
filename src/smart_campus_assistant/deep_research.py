@@ -114,12 +114,16 @@ def research(state: AgentState) -> dict:
     """Research every pending sub-question, then (if loops remain) check for gaps."""
     from smart_campus_assistant import retriever  # lazy: lets fake mode stub the module
 
+    from smart_campus_assistant.personal import branch_scoped_query
+
     question = state["question"]
     loops_done = state.get("research_loops", 0)
     records, notes, all_docs = [], [], list(state.get("docs") or [])
+    # A signed-in student's own branch keeps sub-questions like "Semester 5 subjects" on their branch.
+    own_record = student_data.get_student(state["student_id"]) if state.get("student_id") else None
 
     for sub_q in _pending(state):
-        docs = retriever.search(sub_q)  # one college: no filter needed
+        docs = retriever.search(branch_scoped_query(sub_q, own_record))  # one college: no filter needed
         summary, record = call_llm(
             "answer", "researcher", prompts.note_messages(question, sub_q, retriever.format_docs(docs))
         )

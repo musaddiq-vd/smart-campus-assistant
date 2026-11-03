@@ -15,7 +15,22 @@ from smart_campus_assistant.config import COLLEGE_NAME
 from smart_campus_assistant.simple_rag import call_llm
 from smart_campus_assistant.state import AgentState
 
-POLICY_DOCS_K = 3
+POLICY_DOCS_K = 4
+
+
+def branch_scoped_query(question: str, record: dict | None) -> str:
+    """Add the student's own branch to the search query when the question names none.
+
+    "Which subjects will I study in Semester 5?" otherwise matches every branch's
+    timetable equally, and the student's own curriculum drops out of the top results.
+    """
+    from smart_campus_assistant.config import BRANCHES
+    from smart_campus_assistant.simple_rag import mentioned_branches
+
+    branch = (record or {}).get("branch")
+    if not branch or branch not in BRANCHES or mentioned_branches(question):
+        return question
+    return f"{question} ({branch} {BRANCHES[branch]})"
 
 LOGIN_MESSAGE = (
     f"To answer questions about your own fees, books, attendance, results or exams, please log in "
@@ -60,7 +75,7 @@ def personal_answer(state: AgentState) -> dict:
     if asks_about_other_student(question, record):
         return {"answer": REFUSAL_MESSAGE, "citations": [], "docs": []}
 
-    docs = retriever.search(question, k=POLICY_DOCS_K)
+    docs = retriever.search(branch_scoped_query(question, record), k=POLICY_DOCS_K)
     answer, usage_record = call_llm(
         "answer",
         "personal_answer",

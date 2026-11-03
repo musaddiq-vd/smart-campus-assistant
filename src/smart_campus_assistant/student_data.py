@@ -423,6 +423,41 @@ def _late_fee_line(due: object, due_date: object, today: date) -> str:
     )
 
 
+# Every B.Tech programme has 8 semesters (academic_rules.md, branches_and_programmes.md).
+PROGRAMME_SEMESTERS = 8
+
+
+def current_subjects(record: dict) -> list[str]:
+    """This semester's courses as "CODE Name": from attendance, else from upcoming exams."""
+    courses = (record.get("attendance") or {}).get("courses") or []
+    subjects = [f"{c.get('code', '')} {c.get('name', '')}".strip() for c in courses if isinstance(c, dict)]
+    if not subjects:
+        exams = (record.get("exams") or {}).get("upcoming") or []
+        subjects = [f"{e.get('course_code', '')} {e.get('course_name', '')}".strip() for e in exams if isinstance(e, dict)]
+    return [s for s in subjects if s]
+
+
+def _programme_lines(record: dict) -> list[str]:
+    """Spell out semester progress and current subjects so the model does not have to infer them."""
+    lines = []
+    try:
+        semester = int(record.get("semester"))
+    except (TypeError, ValueError):
+        semester = None
+    if semester:
+        left_after = max(PROGRAMME_SEMESTERS - semester, 0)
+        lines.append(
+            f"Programme: B.Tech, {PROGRAMME_SEMESTERS} semesters in total; currently in Semester {semester}; "
+            f"{left_after} semester(s) left after the current one "
+            f"({left_after + 1} including the current one)."
+        )
+    subjects = current_subjects(record)
+    if subjects:
+        label = f"Semester {semester}" if semester else "this semester"
+        lines.append(f"Current semester subjects ({label}): " + "; ".join(subjects))
+    return lines
+
+
 def student_context(record: dict) -> str:
     """Readable text block of ONE student's record for prompts."""
     today = _date(record.get("as_of")) or date.today()
@@ -434,6 +469,7 @@ def student_context(record: dict) -> str:
     ]
     if record.get("email"):
         lines.append(f"Email: {record['email']}")
+    lines.extend(_programme_lines(record))
 
     hostel = record.get("hostel")
     if hostel and hostel.get("room") == HOSTEL_TO_BE_ALLOTTED:

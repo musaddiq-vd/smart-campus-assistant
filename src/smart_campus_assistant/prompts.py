@@ -34,6 +34,13 @@ NUMBERS_RULE = (
     "table row and column and check the arithmetic. Keep the period (per semester, per year, one-time)."
 )
 
+PROGRESS_RULE = (
+    "Semesters and subjects: for the student's own progress use the record's \"Programme\" line (total "
+    "semesters, current semester, semesters left) and \"Current semester subjects\" line, and copy them "
+    "exactly. For later semesters use the branch curriculum in the documents; it lists only some semesters, "
+    "so name the semesters it lists and say plainly which ones it does not."
+)
+
 STEPS_RULE = (
     "For \"how can I / how to\" questions, list every option or step the context gives, with its exact "
     "conditions (dates, grades, limits). Copy rule wording and thresholds exactly, e.g. \"at least 75%\", "
@@ -73,7 +80,8 @@ Label the user's question as "simple", "deep" or "personal".
 - simple: a single fact or rule about the college (a fee amount, a hostel rule, a library fine rate, an exam date).
 - deep: comparison (e.g. between branches), multi-step reasoning, planning, or advice that needs several documents.
 - personal: about the asking student's OWN data (my fees / dues, books issued to me, my fine, my attendance,
-  my results / CGPA, my next exam, my hall ticket, my hostel room). Also use personal when the question asks
+  my results / CGPA, my next exam, my hall ticket, my hostel room, my current semester or subjects, how many
+  semesters I have left). Also use personal when the question asks
   about a specific student's data (a student ID or a student's name).
 Return ONLY a JSON object: {{"route": "simple" | "deep" | "personal", "reason": "<max 15 words>"}}"""
 
@@ -93,6 +101,10 @@ ROUTER_EXAMPLES: list[tuple[str, str]] = [
     ("What is my attendance in each course?", '{"route": "personal", "reason": "Own attendance."}'),
     ("Mera next exam kab hai?", '{"route": "personal", "reason": "Own upcoming exam."}'),
     ("Do I have any library fine?", '{"route": "personal", "reason": "Own fine status."}'),
+    (
+        "Mere kitne semester baki hain aur is semester ke subjects kaunse hain?",
+        '{"route": "personal", "reason": "Own semester progress and subjects."}',
+    ),
     ("What is the minimum attendance required to sit in exams?", '{"route": "simple", "reason": "Single rule lookup."}'),
 ]
 
@@ -137,8 +149,9 @@ You are the student helpdesk of {COLLEGE_NAME}. The logged-in student asks about
    the fine of each overdue book and the total "fine due"). State them exactly as written; never redo date
    math or recompute them. For unpaid fees always give the fee status (as written in the record), the due amount,
    the due date, the late fee so far and the total payable now. For library fines give the total fine due and the fine of each overdue book.
-4. Never invent data. If the record or documents do not contain the answer, say so.
-5. The record belongs to this student only. Do not talk about any other student.
+4. {PROGRESS_RULE}
+5. Never invent data. If the record or documents do not contain the answer, say so.
+6. The record belongs to this student only. Do not talk about any other student.
 {LANGUAGE_RULE}
 Be short: 1-5 sentences or a small list."""
 
@@ -257,6 +270,8 @@ do not reword it as "should pay dues"), and keep the citation numbers on every f
 {STEPS_RULE}
 If the asking student's record is given, use it for their personal facts (call it "your record",
 no citation number) and copy its numbers and dates exactly. Never mention any other student.
+A fact found in the record counts as found: never say the documents lack something the record states.
+{PROGRESS_RULE}
 {LANGUAGE_RULE}
 Format: markdown with a one-line direct answer first, then short sections or a comparison
 table where helpful, then a brief "Bottom line". Do not add a sources list; it is added separately."""

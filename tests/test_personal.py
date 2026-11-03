@@ -237,3 +237,45 @@ def test_fake_mode_demo_students_when_file_missing(tmp_path, monkeypatch):
 
 def test_fake_mode_prefers_real_file(fake_mode):
     assert {r["student_id"] for r in student_data.list_students()} == {"XYZ24CSE001", "XYZ23ECE007"}
+
+
+# ------------------------------------------------------------ semester progress and subjects
+
+
+def test_programme_lines_state_progress_and_subjects():
+    from smart_campus_assistant import student_data
+
+    record = {
+        "student_id": "XYZ23CSE042", "name": "Kabir", "branch": "CSE", "year": 4, "semester": 7,
+        "attendance": {"courses": [{"code": "CS701", "name": "Compiler Design", "pct": 70.0}]},
+    }
+    text = student_data.student_context(record)
+    assert "8 semesters in total; currently in Semester 7; 1 semester(s) left after the current one" in text
+    assert "Current semester subjects (Semester 7): CS701 Compiler Design" in text
+
+
+def test_current_subjects_fall_back_to_exams():
+    from smart_campus_assistant import student_data
+
+    record = {"semester": 1, "attendance": {"courses": []},
+              "exams": {"upcoming": [{"course_code": "MA101", "course_name": "Engineering Mathematics I"}]}}
+    assert student_data.current_subjects(record) == ["MA101 Engineering Mathematics I"]
+
+
+def test_router_heuristic_sends_own_semester_questions_to_personal():
+    from smart_campus_assistant.router import heuristic_route
+
+    assert heuristic_route("Mere kitne semester baki hain?")[0] == "personal"
+    assert heuristic_route("Which subjects do I have this semester?")[0] == "personal"
+    assert heuristic_route("How many semesters does the B.Tech have?")[0] != "personal"
+
+
+def test_branch_scoped_query_adds_own_branch_only_when_missing():
+    from smart_campus_assistant.personal import branch_scoped_query
+
+    record = {"branch": "CSE"}
+    assert branch_scoped_query("Which subjects will I study in Semester 5?", record).endswith(
+        "(CSE Computer Science and Engineering)"
+    )
+    assert branch_scoped_query("ECE placements?", record) == "ECE placements?"  # branch already named
+    assert branch_scoped_query("Library fine?", None) == "Library fine?"
