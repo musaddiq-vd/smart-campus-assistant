@@ -41,6 +41,7 @@ DOC_TYPES: dict[str, str] = {
     "placements_2026": "placements",
     "about_and_admissions": "admissions",
     "important_dates_and_contacts": "calendar",
+    "notices": "notices",  # admin notices from data/notices.json (see notices.py)
 }
 
 
@@ -138,20 +139,36 @@ def split_documents(docs: list[Document]) -> list[Document]:
     return chunks
 
 
+def notice_chunks() -> list[Document]:
+    """Chunks for the admin notices (empty if the notices file is missing or unreadable)."""
+    try:
+        from smart_campus_assistant import notices
+
+        return notices.all_notice_documents()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Skipping notices: %s", exc)
+        return []
+
+
+def all_chunks() -> list[Document]:
+    """Markdown doc chunks plus the admin notices, as indexed by a full ingest."""
+    return split_documents(load_documents()) + notice_chunks()
+
+
 def _print_file_summary(chunks: list[Document]) -> None:
     for source, count in sorted(Counter(c.metadata["source"] for c in chunks).items()):
         print(f"  {source}: {count} chunks")
 
 
 def ingest(reset: bool = False) -> int:
-    """Load, split and add all chunks to the vector store. Returns the chunk count.
+    """Load, split and add all chunks (docs + admin notices) to the vector store. Returns the chunk count.
 
     Ids are chunk_ids, so re-running overwrites instead of duplicating.
     `reset` deletes the existing chunks with those ids first.
     """
     from smart_campus_assistant import retriever
 
-    chunks = split_documents(load_documents())
+    chunks = all_chunks()
     store = retriever.get_vector_store()
     ids = [c.metadata["chunk_id"] for c in chunks]
     if reset and ids:
@@ -166,7 +183,7 @@ def ingest(reset: bool = False) -> int:
 
 def dry_run() -> int:
     """Load and split only (no embeddings, no AWS); print counts."""
-    chunks = split_documents(load_documents())
+    chunks = all_chunks()
     by_type = Counter(c.metadata["doc_type"] for c in chunks)
     print(f"Dry run: {len(chunks)} chunks")
     for doc_type, count in sorted(by_type.items()):

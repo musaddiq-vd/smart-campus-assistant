@@ -712,3 +712,56 @@ def render_student_dashboard(record: Mapping) -> None:
     with right:
         _attendance_section(record)
         _exams_section(record)
+
+
+# ---------- admin notices ----------
+
+NOTICE_ICONS = {"exams": "📝", "fees": "💳", "hostel": "🏠", "library": "📚", "general": "📢"}
+
+NOTICE_CSS = """
+<style>
+.sca-notices { display: flex; flex-direction: column; gap: .6rem; margin: .5rem 0 1rem 0; }
+.sca-notice {
+  border: 1px solid var(--sca-card-border, rgba(128,128,128,.25)); border-radius: var(--sca-radius, 14px);
+  background: var(--sca-card-bg, transparent); padding: .8rem 1rem;
+  border-left: 4px solid var(--sca-brand, #5B5BD6);
+}
+.sca-notice .head { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
+.sca-notice .title { font-weight: 650; font-size: 1rem; }
+.sca-notice .meta { font-size: .78rem; color: var(--sca-muted, gray); margin-top: .15rem; }
+.sca-notice .body { font-size: .9rem; margin-top: .4rem; white-space: pre-wrap; }
+</style>
+"""
+
+
+def notice_card_html(notice: Mapping, show_body: bool = True, max_body: int | None = None) -> str:
+    """One notice as a card (all fields escaped)."""
+    category = str(notice.get("category") or "general")
+    icon = NOTICE_ICONS.get(category, "📢")
+    branches = list(notice.get("branches") or [])
+    for_text = "All branches" if not branches or "ALL" in branches else ", ".join(str(b) for b in branches)
+    meta = f"{notice.get('id', '')} · {nice_date(notice.get('published_at'))} · {category.title()} · {for_text}"
+    body = str(notice.get("body") or "")
+    if max_body and len(body) > max_body:
+        body = body[:max_body].rsplit(" ", 1)[0] + "…"
+    body_html = f'<div class="body">{escape(body)}</div>' if show_body and body else ""
+    return (
+        f'<div class="sca-notice"><div class="head"><span>{icon}</span>'
+        f'<span class="title">{escape(str(notice.get("title") or ""))}</span></div>'
+        f'<div class="meta">{escape(meta)}</div>{body_html}</div>'
+    )
+
+
+def notice_cards_html(notices: Iterable[Mapping], max_body: int | None = None) -> str:
+    cards = "".join(notice_card_html(n, max_body=max_body) for n in notices)
+    return f'{NOTICE_CSS}<div class="sca-notices">{cards}</div>'
+
+
+def list_notices_safe(branch: str | None = None, limit: int | None = None) -> list[dict]:
+    """Notices from the backend, or [] if it cannot be loaded."""
+    try:
+        from smart_campus_assistant import notices
+
+        return notices.list_notices(branch=branch, limit=limit)
+    except Exception:  # noqa: BLE001
+        return []

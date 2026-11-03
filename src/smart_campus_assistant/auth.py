@@ -391,17 +391,23 @@ def seed_demo_users(
     credentials_csv: str | Path | None = None,
     students_file: str | Path | None = None,
     force: bool = False,
+    shared_password: str | None = None,
+    write_csv: bool = True,
 ) -> int:
     """Create one account per student plus the admin; return the number created.
 
-    Writes the users file (hashes only) and a CSV with plaintext demo passwords
-    (default: ``demo_credentials.csv`` next to the users file).
+    Writes the users file (hashes only) and, unless ``write_csv`` is False, a CSV
+    with plaintext demo passwords (default: ``demo_credentials.csv`` next to the
+    users file). ``shared_password`` gives every demo account the same password
+    (used by hosted demos) instead of a random one each.
     """
     path = _users_path(path)
     csv_path = Path(credentials_csv) if credentials_csv else path.parent / "demo_credentials.csv"
     students_path = Path(students_file) if students_file else get_settings().students_file
-    if not force and (path.exists() or csv_path.exists()):
+    if not force and (path.exists() or (write_csv and csv_path.exists())):
         raise FileExistsError(f"{path} or {csv_path} already exists; use force=True to overwrite.")
+    if shared_password is not None:
+        hash_password(shared_password)  # fail early if it is too short
 
     data = json.loads(students_path.read_text(encoding="utf-8"))
     rows = data.get("students", []) if isinstance(data, dict) else data
@@ -418,7 +424,7 @@ def seed_demo_users(
     for role, email, name, sid in accounts:
         if email in users:
             raise ValueError(f"Duplicate email in students file: {email}")
-        password = generate_password()
+        password = shared_password if shared_password is not None else generate_password()
         users[email] = {
             "email": email,
             "role": role,
@@ -429,12 +435,26 @@ def seed_demo_users(
         creds.append({"role": role, "email": email, "name": name, "student_id": sid or "", "password": password})
 
     save_users(users, path)
-    buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=CSV_COLUMNS, lineterminator="\n")
-    writer.writeheader()
-    writer.writerows(creds)
-    _atomic_write(csv_path, buf.getvalue())
+    if write_csv:
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=CSV_COLUMNS, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(creds)
+        _atomic_write(csv_path, buf.getvalue())
     return len(users)
+
+
+def ensure_hosted_demo_users(path: str | Path | None = None) -> int:
+    """Hosted demo bootstrap: seed accounts once when SCA_DEMO_PASSWORD is set and none exist.
+
+    Cloud hosts start without the git-ignored users file. Every demo account then
+    gets the shared demo password from the environment (e.g. Streamlit secrets);
+    no plaintext CSV is written. Returns the number of accounts created (0 if skipped).
+    """
+    password = os.getenv("SCA_DEMO_PASSWORD") or ""
+    if not password or load_users(path):
+        return 0
+    return seed_demo_users(path=path, force=True, shared_password=password, write_csv=False)
 
 
 # ---------------------------------------------------------------- CLI

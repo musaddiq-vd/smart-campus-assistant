@@ -201,8 +201,58 @@ def ask_example(question: str) -> None:
     st.session_state.pending_question = question
 
 
+# ---------- saved history (survives a refresh) ----------
+
+def _chat_store():
+    """The chat_store module, or None if it cannot be loaded (the chat still works, just not saved)."""
+    try:
+        from smart_campus_assistant import chat_store
+    except Exception:  # noqa: BLE001
+        return None
+    return chat_store
+
+
+def stored_to_message(rec: dict) -> dict:
+    """Saved record -> in-memory chat message."""
+    if rec.get("role") == "user":
+        return {"role": "user", "content": rec.get("content", "")}
+    keys = ("answer", "route", "route_reason", "citations", "steps", "no_record")
+    return {"role": "assistant", "result": {k: rec[k] for k in keys if k in rec}}
+
+
+def load_saved_history(email: str) -> list[dict]:
+    store = _chat_store()
+    if store is None or not email:
+        return []
+    try:
+        return [stored_to_message(r) for r in store.load_history(email)]
+    except Exception:  # noqa: BLE001  (a broken history file must not break the page)
+        return []
+
+
+def save_turn(email: str, question: str, result: dict) -> None:
+    """Persist one question + answer for this user only (chat_store whitelists the fields)."""
+    store = _chat_store()
+    if store is None or not email:
+        return
+    answer = {"role": "assistant", **{k: result.get(k) for k in ("answer", "route", "route_reason", "citations", "steps")}}
+    if result.get("no_record"):
+        answer["no_record"] = True
+    try:
+        store.append_messages(email, [{"role": "user", "content": question}, answer])
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def clear_chat() -> None:
     st.session_state.messages = []
+    user = st.session_state.get("user") or {}
+    store = _chat_store()
+    if store is not None and user.get("email"):
+        try:
+            store.clear_history(user["email"])
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def render_empty_state(user: dict) -> None:
@@ -246,7 +296,14 @@ owner = f"{user['role']}:{user.get('email', '')}"
 if st.session_state.get("chat_owner") != owner:
     st.session_state.messages = []
     st.session_state.pop("pending_question", None)
+    st.session_state.pop("chat_loaded_for", None)
 st.session_state.chat_owner = owner
+
+# After a refresh (or a new sign-in) reload this user's saved history once.
+if st.session_state.get("chat_loaded_for") != owner:
+    if not st.session_state.messages:
+        st.session_state.messages = load_saved_history(user.get("email", ""))
+    st.session_state.chat_loaded_for = owner
 
 chips = []
 if demo:
@@ -264,7 +321,7 @@ with head:
     st.markdown(hero_html("AI helpdesk", get_college_name(), subtitle, chips), unsafe_allow_html=True)
 with side:
     if st.session_state.messages:
-        st.button("Clear", icon=":material/delete_sweep:", on_click=clear_chat, width="stretch")
+        st.button("Clear chat", icon=":material/delete_sweep:", on_click=clear_chat, width="stretch", key="clear_chat")
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=":material/person:" if msg["role"] == "user" else ":material/school:"):
@@ -298,6 +355,7 @@ if question:
             live.empty()
             render_result(result, is_admin)
             st.session_state.messages.append({"role": "assistant", "result": result})
+            save_turn(user.get("email", ""), question, result)
         except Exception as exc:  # show a friendly box instead of a stack trace
             err = explain_error(exc)
             render_error(err)

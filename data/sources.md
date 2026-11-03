@@ -27,4 +27,4 @@ Ingested by `python -m smart_campus_assistant.ingest` into the S3 Vectors index 
 
 ## Old data (no longer used)
 
-The official IIT Delhi, IIT Bombay and NIT Trichy PDFs in `data/raw/` came from the first version of the project. They are **no longer used** by ingest, the eval or the app. The old S3 Vectors index `college-docs` holds that data and is unused.
+The first version of the project used official IIT Delhi, IIT Bombay and NIT Trichy PDFs. That data and its S3 Vectors index (`college-docs`) were removed on 2026-11-03; only the synthetic data above is used now.

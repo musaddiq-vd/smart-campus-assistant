@@ -1,0 +1,27 @@
+{
+  "notices": [
+    {
+      "id": "N-2026-0001",
+      "title": "Library timings during the Diwali break",
+      "category": "library",
+      "branches": [
+        "ALL"
+      ],
+      "body": "The Central Library will be closed on 2026-11-08 (Diwali). On the other Diwali break days (2026-11-07 and 2026-11-09 to 2026-11-11) it will be open from 09:00 to 17:00 only. Normal timings (08:00 to 22:00, Monday to Saturday) resume on 2026-11-12. Books due during the break can be returned on 2026-11-12 without a fine.",
+      "published_at": "2026-11-02",
+      "author": "XYZ Admin Office"
+    },
+    {
+      "id": "N-2026-0002",
+      "title": "Lab practical exams for CSE and ECE on 2026-11-26 and 2026-11-27",
+      "category": "exams",
+      "branches": [
+        "CSE",
+        "ECE"
+      ],
+      "body": "End-semester lab practical exams for CSE and ECE (all semesters) will be held on 2026-11-26 and 2026-11-27, from 09:00 to 13:00, in the department labs. The batch-wise schedule is on the student portal. Bring your lab record and college ID card. A hall ticket is not needed for lab practicals.",
+      "published_at": "2026-11-03",
+      "author": "XYZ Admin Office"
+    }
+  ]
+}

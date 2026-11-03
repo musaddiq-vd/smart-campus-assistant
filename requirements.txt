@@ -6,5 +6,5 @@ pypdf
 boto3
 python-dotenv
 streamlit
-langgraph-cli[inmem]
-pytest
+pandas
+altair

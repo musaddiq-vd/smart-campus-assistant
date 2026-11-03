@@ -114,14 +114,18 @@ def test_student_context_normal(students_file):
     assert "CGPA 8.12" in text and "backlogs 0" in text
     assert "2026-11-24 10:00: CS301" in text
     assert "BELOW 75%" not in text and "OVERDUE" not in text
+    assert "Late fee so far: Rs 0 (not overdue); total payable now: Rs 35,000" in text
 
 
 def test_student_context_flags_overdue_and_low_attendance(students_file):
     text = student_data.student_context(student_data.get_student("XYZ23ECE007"))
     assert "(OVERDUE by 3 days)" in text and "status: OVERDUE" in text
     assert "Scholarship: Merit scholarship Rs 20,000" in text
-    assert "Signals and Systems" in text and "(OVERDUE by 19 days)" in text
+    assert "Signals and Systems" in text and "(OVERDUE by 19 days, fine Rs 95)" in text
     assert "fine due Rs 95" in text
+    # Computed money facts, so the model does no date math (3 days x Rs 100 after 2026-10-31).
+    assert "Late fee so far: Rs 300 (3 days x Rs 100 per day, cap Rs 5,000 per semester)" in text
+    assert "total payable now: Rs 55,300 (due Rs 55,000 + late fee Rs 300)" in text
     assert "overall 71.0% (BELOW 75%)" in text
     assert "EC301 Digital Communication: 64.0% (BELOW 75%)" in text
     assert "EC302 VLSI: 80.0%" in text and "80.0% (BELOW" not in text

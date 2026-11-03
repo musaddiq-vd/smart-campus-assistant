@@ -14,7 +14,7 @@ from smart_campus_assistant.config import get_settings
 from smart_campus_assistant.simple_rag import call_llm
 from smart_campus_assistant.state import AgentState, Citation, Note
 
-MIN_PLAN, MAX_PLAN = 3, 5
+MAX_PLAN = 5  # plan size: the question itself + up to 4 planner sub-questions
 MAX_GAP_QUESTIONS = 2
 MAX_SUB_QUESTIONS = 6  # hard cap on plan size across all loops (keeps deep cost bounded)
 CITE_RE = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
@@ -103,9 +103,10 @@ def _notes_text(notes: list[Note]) -> str:
 def plan_research(state: AgentState) -> dict:
     question = state["question"]
     text, record = call_llm("answer", "planner", prompts.planner_messages(question, _student_text(state)))
-    plan = parse_list(text, MAX_PLAN)
-    if len(plan) < MIN_PLAN and question not in plan:
-        plan.append(question)  # unparseable or tiny plan: research the question itself too
+    sub_questions = [q for q in parse_list(text, MAX_PLAN) if q.lower() != question.lower()]
+    # The question itself is always researched first: documents often state the combined answer
+    # (e.g. a published total) that the planner's narrower sub-questions miss.
+    plan = [question] + sub_questions[: MAX_PLAN - 1]
     return {"plan": plan, "research_loops": 0, "usage": [record]}
 
 

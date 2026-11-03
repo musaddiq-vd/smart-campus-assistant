@@ -1,8 +1,8 @@
 """Streamlit entry point: sign-in gate, then role-based navigation.
 
 - Signed out: only the sign-in page exists (no sidebar).
-- Student: "Ask" (chat about the college and their own record) and "My dashboard".
-- Admin: "Overview", "Students" and "Ask" (college questions only).
+- Student: "Ask" (chat about the college and their own record), "My dashboard" and "Account".
+- Admin: "Overview", "Students", "Notices" (if present), "Ask" (college questions only) and "Account".
 
 Identity comes only from ``st.session_state["user"]``, which is set by the sign-in form or,
 after a page refresh, by a valid server-side session behind the ``sca_session`` cookie.
@@ -21,8 +21,11 @@ from pathlib import Path
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# src/ is on the path so hosts that only `pip install -r requirements.txt`
+# (e.g. Streamlit Community Cloud) can import the package without installing it.
+for path in (ROOT / "src", ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 from ui.components import get_college_name, get_student_safe, is_demo_mode, user_card_html  # noqa: E402
 from ui.login import load_auth, render_login_page  # noqa: E402
@@ -39,6 +42,22 @@ inject_css()
 
 # Invisible and automatic: pages read this plain flag.
 st.session_state.demo_mode = is_demo_mode()
+
+
+@st.cache_resource(show_spinner="Setting up demo accounts...")
+def _bootstrap_hosted_demo() -> int:
+    """Once per server: create demo accounts on a fresh host when SCA_DEMO_PASSWORD is set."""
+    try:
+        from smart_campus_assistant.auth import ensure_hosted_demo_users
+    except Exception:  # noqa: BLE001  (login page shows its own setup message)
+        return 0
+    try:
+        return ensure_hosted_demo_users()
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+_bootstrap_hosted_demo()
 
 
 def log_out() -> None:
@@ -81,16 +100,26 @@ def render_sidebar(user: dict) -> None:
         )
 
 
+def account_page():
+    return st.Page("ui/account.py", title="Account", icon=":material/manage_accounts:", url_path="account")
+
+
 def pages_for(user: dict) -> list:
     if user["role"] == "admin":
-        return [
+        pages = [
             st.Page("ui/admin_overview.py", title="Overview", icon=":material/insights:", url_path="overview", default=True),
             st.Page("ui/admin_students.py", title="Students", icon=":material/group:", url_path="students"),
-            st.Page("ui/chat.py", title="Ask", icon=":material/forum:", url_path="ask"),
         ]
+        # Registered only when the page file exists, so a missing file never crashes the app.
+        if (ROOT / "ui" / "admin_notices.py").exists():
+            pages.append(st.Page("ui/admin_notices.py", title="Notices", icon=":material/campaign:", url_path="notices"))
+        pages.append(st.Page("ui/chat.py", title="Ask", icon=":material/forum:", url_path="ask"))
+        pages.append(account_page())
+        return pages
     return [
         st.Page("ui/chat.py", title="Ask", icon=":material/forum:", url_path="ask", default=True),
         st.Page("ui/student_home.py", title="My dashboard", icon=":material/dashboard:", url_path="my-dashboard"),
+        account_page(),
     ]
 
 

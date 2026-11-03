@@ -93,7 +93,7 @@ def _label(doc: Document) -> str:
 
 
 def format_docs(docs: list[Document]) -> str:
-    """Numbered context block for prompts: "[1] (IIT Bombay | fees | src p.2)\\n<text>"."""
+    """Numbered context block for prompts: "[1] (XYZ College of Engineering | fees | fee_structure.md p.2)\\n<text>"."""
     if not docs:
         return "No relevant documents found."
     return "\n\n".join(

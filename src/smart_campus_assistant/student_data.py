@@ -14,6 +14,12 @@ from pathlib import Path
 from smart_campus_assistant.config import BRANCHES, get_settings
 
 LOW_ATTENDANCE_PCT = 75.0
+
+# Money rules from the college documents (fee_structure.md "Late fee", library rules "Overdue fine").
+FEE_LATE_FEE_PER_DAY = 100  # Rs per day, from the day after the due date
+FEE_LATE_FEE_CAP = 5000  # Rs per semester
+LIBRARY_FINE_PER_DAY = 5  # Rs per day per book, after the due date
+LIBRARY_FINE_CAP = 500  # Rs per book
 STUDENT_ID_RE = re.compile(r"\bXYZ\d{2}[A-Z]{2,3}\d{3}\b", flags=re.IGNORECASE)
 
 # Parsed files, keyed by resolved path (clear with clear_cache()).
@@ -130,6 +136,45 @@ def _date(value: object) -> date | None:
         return None
 
 
+def days_overdue(due_date: object, as_of: object) -> int:
+    """Whole days after ``due_date`` up to ``as_of`` (0 when not yet overdue or a date is invalid).
+
+    Paying on the due date is on time, so the first overdue day is the day after it.
+    """
+    due, today = _date(due_date), _date(as_of)
+    if due is None or today is None:
+        return 0
+    return max(0, (today - due).days)
+
+
+def accrued_charge(due_date: object, as_of: object, per_day: int, cap: int | None = None) -> tuple[int, int]:
+    """(days overdue, charge so far) for a per-day charge with an optional cap. Pure function."""
+    days = days_overdue(due_date, as_of)
+    amount = days * per_day
+    if cap is not None:
+        amount = min(amount, cap)
+    return days, amount
+
+
+def fee_late_fee(due_amount: object, due_date: object, as_of: object) -> dict:
+    """Late fee facts for unpaid semester dues, following the fee_structure.md rule.
+
+    Rs 100 for every day after the due date, capped at Rs 5,000 per semester; nothing when
+    nothing is due. Returns {"days_overdue", "late_fee", "total_payable"} (amounts in Rs).
+    """
+    try:
+        due = max(0, int(round(float(due_amount or 0))))
+    except (TypeError, ValueError):
+        due = 0
+    days, fee = accrued_charge(due_date, as_of, FEE_LATE_FEE_PER_DAY, FEE_LATE_FEE_CAP) if due else (0, 0)
+    return {"days_overdue": days, "late_fee": fee, "total_payable": due + fee}
+
+
+def library_book_fine(due_date: object, as_of: object) -> int:
+    """Overdue fine for ONE book: Rs 5 per day after the due date, capped at Rs 500."""
+    return accrued_charge(due_date, as_of, LIBRARY_FINE_PER_DAY, LIBRARY_FINE_CAP)[1]
+
+
 def _days_note(due: object, today: date) -> str:
     """"(27 days left)" / "(due today)" / "(OVERDUE by 3 days)"."""
     d = _date(due)
@@ -141,6 +186,29 @@ def _days_note(due: object, today: date) -> str:
     if days == 0:
         return "(due today)"
     return f"(OVERDUE by {-days} day{'s' if days != -1 else ''})"
+
+
+def _late_fee_line(due: object, due_date: object, today: date) -> str:
+    """Computed late fee and total payable, so the answer model never does date math."""
+    late = fee_late_fee(due, due_date, today)
+    if not late["late_fee"]:
+        return (
+            f"  Late fee so far: Rs 0 (not overdue); total payable now: {_rs(late['total_payable'])}. "
+            f"A late fee of {_rs(FEE_LATE_FEE_PER_DAY)} per day starts after {due_date}"
+        )
+    days = late["days_overdue"]
+    capped = late["late_fee"] >= FEE_LATE_FEE_CAP
+    rule = (
+        f"cap of {_rs(FEE_LATE_FEE_CAP)} per semester reached"
+        if capped
+        else f"{days} day{'s' if days != 1 else ''} x {_rs(FEE_LATE_FEE_PER_DAY)} per day, "
+        f"cap {_rs(FEE_LATE_FEE_CAP)} per semester"
+    )
+    growth = "" if capped else f"; it grows by {_rs(FEE_LATE_FEE_PER_DAY)} each day until paid"
+    return (
+        f"  Late fee so far: {_rs(late['late_fee'])} ({rule}); total payable now: "
+        f"{_rs(late['total_payable'])} (due {_rs(due)} + late fee {_rs(late['late_fee'])}){growth}"
+    )
 
 
 def student_context(record: dict) -> str:
@@ -172,6 +240,8 @@ def student_context(record: dict) -> str:
         if due:
             line += f" by {fees.get('due_date')} {_days_note(fees.get('due_date'), today)}".rstrip()
         lines.append(f"{line} | status: {status.upper() if status == 'overdue' else status}")
+        if due:
+            lines.append(_late_fee_line(due, fees.get("due_date"), today))
         scholarship = fees.get("scholarship")
         if scholarship:
             lines.append(f"  Scholarship: {scholarship.get('name')} {_rs(scholarship.get('amount'))}")
@@ -186,6 +256,9 @@ def student_context(record: dict) -> str:
             note = _days_note(b.get("due_date"), today)
             if b.get("status") == "overdue" and "OVERDUE" not in note:
                 note = "(OVERDUE)"
+            fine = library_book_fine(b.get("due_date"), today)
+            if fine:
+                note = f"{note[:-1]}, fine {_rs(fine)})" if note.endswith(")") else f"(fine {_rs(fine)})"
             lines.append(
                 f"  - {b.get('title')} by {b.get('author')} [{b.get('book_id')}], issued {b.get('issue_date')}, "
                 f"due {b.get('due_date')} {note}".rstrip()

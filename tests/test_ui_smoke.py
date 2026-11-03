@@ -118,10 +118,16 @@ def make_auth_module(max_failures: int = 3) -> types.ModuleType:
     return mod
 
 
+ADMIN_NOTICES = (ROOT / "ui" / "admin_notices.py").exists()
+ADMIN_PAGES = ["Overview", "Students", *(["Notices"] if ADMIN_NOTICES else []), "Ask", "Account"]
+STUDENT_PAGES = ["Ask", "My dashboard", "Account"]
+
+
 @pytest.fixture
-def backend(monkeypatch):
+def backend(monkeypatch, tmp_path):
     """Stub every backend module the UI imports so tests never touch AWS or real files."""
     monkeypatch.setenv("SCA_DEMO_MODE", "1")
+    monkeypatch.setenv("SCA_CHATS_DIR", str(tmp_path / "chats"))  # chat history goes to a temp folder
     graph_mod = types.ModuleType("smart_campus_assistant.graph")
     graph_mod.graph = FakeGraph()
     fakes_mod = types.ModuleType("smart_campus_assistant.fakes")
@@ -255,7 +261,7 @@ def test_setup_message_when_users_file_missing(backend):
 def test_student_login_pages_and_sidebar(backend):
     at = as_student()
     assert not at.exception
-    assert backend.pages[-1] == ["Ask", "My dashboard"]
+    assert backend.pages[-1] == STUDENT_PAGES
     assert "login_password" not in at.session_state or at.session_state["login_password"] == ""
     user = at.session_state["user"]
     assert user["student_id"] == "XYZ24CSE001" and "password" not in str(user).lower()
@@ -305,7 +311,7 @@ def test_student_cannot_reach_admin_pages(backend):
         # The pages are not registered for students, so there is nothing to switch to.
         with pytest.raises(ValueError, match="Could not find a navigation page"):
             at.switch_page(page)
-    assert backend.pages[-1] == ["Ask", "My dashboard"]
+    assert backend.pages[-1] == STUDENT_PAGES
     # Second line of defence: the page scripts themselves refuse a student session.
     for page in ("admin_overview.py", "admin_students.py"):
         direct = AppTest.from_file(str(ROOT / "ui" / page), default_timeout=30)
@@ -329,7 +335,7 @@ def test_log_out_returns_to_login(backend):
 def test_admin_pages_and_overview(backend):
     at = as_admin()
     assert not at.exception
-    assert backend.pages[-1] == ["Overview", "Students", "Ask"]
+    assert backend.pages[-1] == ADMIN_PAGES
     text = all_text(at)
     assert "Admin · overview" in text
     assert "₹1,00,000" in text  # collected
@@ -374,3 +380,29 @@ def test_chat_backend_error_is_friendly(backend):
     at.chat_input[0].set_value("anything").run()
     assert not at.exception
     assert at.error and "Something went wrong" in at.error[0].value
+
+
+# ---------- saved chat history ----------
+
+def test_chat_history_survives_refresh_and_clear(backend):
+    at = as_student()
+    at.chat_input[0].set_value("What is the library fine per day?").run()
+    assert not at.exception
+    # A refresh is a fresh Streamlit session: history comes back from the chat store.
+    fresh = AppTest.from_file(APP, default_timeout=30)
+    fresh.session_state["user"] = dict(ACCOUNTS["aarav@xyz.edu.example"][1])
+    fresh.run()
+    text = all_text(fresh)
+    assert "What is the library fine per day?" in text and "Rs 5" in text and "SIMPLE" in text
+    # Another account never sees it.
+    other = AppTest.from_file(APP, default_timeout=30)
+    other.session_state["user"] = dict(ACCOUNTS["admin@xyz.edu.example"][1])
+    other.run()
+    other.switch_page("ui/chat.py").run()
+    assert "library fine" not in all_text(other)
+    # Clear chat empties the page and the store.
+    fresh.button(key="clear_chat").click().run()
+    again = AppTest.from_file(APP, default_timeout=30)
+    again.session_state["user"] = dict(ACCOUNTS["aarav@xyz.edu.example"][1])
+    again.run()
+    assert "library fine per day?" not in [str(m.value) for m in again.markdown]

@@ -242,3 +242,46 @@ def test_fake_mode_restores_originals():
     fakes.disable_fake_mode()
     assert models.get_chat_model is original_model
     assert retriever.search is original_search
+
+
+# ---------------------------------------------------------------- answer-format hints
+
+
+@pytest.mark.parametrize(
+    "question, total, steps",
+    [
+        ("What is the hostel fee per semester, including mess charges?", True, False),
+        ("Hostel ke saath ek saal ka total kharcha kitna hoga?", True, False),
+        ("How can a student clear backlogs?", False, True),
+        ("What is the library fine per day?", False, False),
+    ],
+)
+def test_answer_hints(question, total, steps):
+    from smart_campus_assistant import prompts
+
+    hints = prompts.answer_hints(question)
+    assert (prompts.TOTAL_HINT in hints) is total
+    assert (prompts.STEPS_HINT in hints) is steps
+
+
+def test_hints_reach_simple_and_writer_messages():
+    from smart_campus_assistant import prompts
+
+    q = "What is the total yearly cost, including hostel?"
+    assert prompts.TOTAL_HINT in prompts.simple_answer_messages(q, "[1] (x)\nfact")[-1].content
+    writer = prompts.writer_messages(q, "### sub\n- fact [1]", "[1] src")[-1].content
+    assert writer.index("Sources:") < writer.index(prompts.TOTAL_HINT)  # after the notes and sources
+
+
+def test_planner_does_not_invite_extra_branches():
+    from smart_campus_assistant import prompts
+
+    assert "never add branches" in prompts.PLANNER_SYSTEM
+    assert "Late fee so far" in prompts.PERSONAL_ANSWER_SYSTEM
+
+
+def test_plan_starts_with_the_question_itself(fake_mode):
+    out = deep_research.plan_research({"question": "Compare CSE vs ECE placements"})
+    assert out["plan"][0] == "Compare CSE vs ECE placements"
+    assert 2 <= len(out["plan"]) <= deep_research.MAX_PLAN
+    assert len({q.lower() for q in out["plan"]}) == len(out["plan"])  # no duplicates

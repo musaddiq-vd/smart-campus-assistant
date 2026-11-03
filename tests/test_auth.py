@@ -168,3 +168,25 @@ def test_cli_list_users_hides_hashes(users_file, capsys):
 def test_cli_seed_demo_refuses_existing(users_file, capsys):
     assert auth.main(["--users-file", str(users_file), "seed-demo"]) == 1
     assert "already exists" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------ hosted demo bootstrap
+
+
+def test_ensure_hosted_demo_users(tmp_path, monkeypatch):
+    users = tmp_path / "users.json"
+    students = _students_file(tmp_path, n=3)
+    monkeypatch.setattr(auth, "get_settings", lambda: type("S", (), {"students_file": students, "users_file": users})())
+    monkeypatch.delenv("SCA_DEMO_PASSWORD", raising=False)
+    assert auth.ensure_hosted_demo_users(users) == 0 and not users.exists()
+    monkeypatch.setenv("SCA_DEMO_PASSWORD", "shared-demo-42")
+    assert auth.ensure_hosted_demo_users(users) == 4
+    assert not (tmp_path / "demo_credentials.csv").exists()
+    assert auth.authenticate("s1@xyz.edu.example", "shared-demo-42", path=users)["role"] == "student"
+    assert auth.authenticate(auth.ADMIN_EMAIL, "shared-demo-42", path=users)["role"] == "admin"
+    assert auth.ensure_hosted_demo_users(users) == 0  # never re-seeds existing accounts
+
+
+def test_shared_password_too_short(tmp_path):
+    with pytest.raises(ValueError):
+        auth.seed_demo_users(tmp_path / "u.json", students_file=_students_file(tmp_path, 2), shared_password="short")

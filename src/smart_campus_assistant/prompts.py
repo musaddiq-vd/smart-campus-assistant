@@ -7,6 +7,8 @@ fake model in ``fakes.py`` tell the prompt types apart.
 
 from __future__ import annotations
 
+import re
+
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from smart_campus_assistant.config import BRANCHES, COLLEGE_NAME
@@ -23,6 +25,44 @@ GROUNDING_RULE = (
     "like [1] or [2]. Never invent fees, dates or rules. If the context does not contain "
     "the answer, say clearly that the college documents provided do not contain it."
 )
+
+NUMBERS_RULE = (
+    "Totals and costs: when the question asks for a total or a cost, or says \"including\", \"with\" or "
+    "\"plus\", name each component with its amount and then the total, and show the sum, for example "
+    "\"Rs 8,000 fee A + Rs 4,000 fee B = Rs 12,000 per semester\". Prefer totals that the documents state "
+    "(semester bill, yearly cost); when you add or multiply yourself, use the full amounts from the right "
+    "table row and column and check the arithmetic. Keep the period (per semester, per year, one-time)."
+)
+
+STEPS_RULE = (
+    "For \"how can I / how to\" questions, list every option or step the context gives, with its exact "
+    "conditions (dates, grades, limits). Copy rule wording and thresholds exactly, e.g. \"at least 75%\", "
+    "\"not eligible until ... is cleared\"."
+)
+
+# Questions that ask for a sum of parts, or for steps (English and Hinglish).
+TOTAL_QUESTION_RE = re.compile(
+    r"\b(total|including|inclusive|incl\.?|plus|along with|together with|cost|kharcha|kul|saath|milake)\b",
+    flags=re.IGNORECASE,
+)
+STEPS_QUESTION_RE = re.compile(r"\b(how (?:can|do|to|should)|steps?|process|procedure|kaise)\b", flags=re.IGNORECASE)
+
+TOTAL_HINT = (
+    "Answer format for this question: list each component with its amount and period, then the total "
+    "with the sum written out (a + b = total). If the parts cover different periods, give the per-semester "
+    "total, then the per-year total, then add one-time charges, and state each of these totals."
+)
+STEPS_HINT = "Answer format for this question: list every option or step with its exact conditions."
+
+
+def answer_hints(question: str) -> str:
+    """Format hints added to the user message for total / how-to questions ("" otherwise).
+
+    Nova Lite follows a short hint next to the question more reliably than a rule in a long system prompt.
+    """
+    hints = [h for rx, h in ((TOTAL_QUESTION_RE, TOTAL_HINT), (STEPS_QUESTION_RE, STEPS_HINT)) if rx.search(question)]
+    return "\n\n" + "\n".join(hints) if hints else ""
+
 
 # ---------------------------------------------------------------- router
 
@@ -70,6 +110,8 @@ def router_messages(question: str) -> list[BaseMessage]:
 SIMPLE_ANSWER_SYSTEM = f"""Task: answer
 You are the student helpdesk of {COLLEGE_NAME}. You answer questions from the college's documents.
 {GROUNDING_RULE}
+{NUMBERS_RULE}
+{STEPS_RULE}
 {LANGUAGE_RULE}
 Be short and direct: 1-4 sentences or a small list. Include amounts, units and dates exactly as written."""
 
@@ -77,7 +119,9 @@ Be short and direct: 1-4 sentences or a small list. Include amounts, units and d
 def simple_answer_messages(question: str, context: str) -> list[BaseMessage]:
     return [
         SystemMessage(content=SIMPLE_ANSWER_SYSTEM),
-        HumanMessage(content=f"Context:\n{context or '(no documents found)'}\n\nQuestion: {question}"),
+        HumanMessage(
+            content=f"Context:\n{context or '(no documents found)'}\n\nQuestion: {question}{answer_hints(question)}"
+        ),
     ]
 
 
@@ -89,6 +133,10 @@ You are the student helpdesk of {COLLEGE_NAME}. The logged-in student asks about
 2. Use the numbered college documents only for policies and rules (late fee rule, library fine per day,
    minimum attendance, exam rules). Cite each document fact inline as [1], [2]. Never cite the record with a number.
 3. Be precise: copy amounts, dates, percentages and counts exactly. Mention days left or overdue when relevant.
+   The record already holds computed money facts (days overdue, "Late fee so far", "total payable now",
+   the fine of each overdue book and the total "fine due"). State them exactly as written; never redo date
+   math or recompute them. For unpaid fees always give the fee status (as written in the record), the due amount,
+   the due date, the late fee so far and the total payable now. For library fines give the total fine due and the fine of each overdue book.
 4. Never invent data. If the record or documents do not contain the answer, say so.
 5. The record belongs to this student only. Do not talk about any other student.
 {LANGUAGE_RULE}
@@ -112,13 +160,21 @@ def personal_answer_messages(question: str, student_text: str, context: str) -> 
 
 PLANNER_SYSTEM = f"""Task: plan
 You are a research planner for questions about {COLLEGE_NAME} (branches: {BRANCH_LIST}).
-Split the question into 3 to 5 focused sub-questions that can each be answered by searching
-the college documents (fees, exam notifications, rules, hostel, library, branches, scholarships,
-placements, academic calendar).
-Prefer one sub-question per branch and topic, and name the branch in each sub-question when relevant.
+Split the question into 2 to 4 focused sub-questions (the full question is searched separately)
+that can each be answered by searching the college documents (fees, exam notifications, rules,
+hostel, library, branches, scholarships, placements, academic calendar).
+Split by topic: each part of the question (each "and" or "including" part) gets its own sub-question.
+Split by branch ONLY when the question names or compares branches, with one sub-question per named
+branch. Rules that apply to all students need no branch: never add branches, years or topics that the
+question (or the student record) does not mention.
+When the question asks how something affects a named status, class, eligibility or benefit, add a
+sub-question for the criteria of each one, using measurable terms (CGPA, attendance %, amount, date),
+e.g. "What CGPA is needed for <name>?".
+For cost or total questions, also ask for the totals the documents publish (total semester bill,
+total yearly cost, one-time deposits), not only single components such as tuition.
 If a student record is given, use it only to make the sub-questions specific (branch, year, dues);
 do not ask about the record itself.
-Return ONLY a JSON list of strings, e.g. ["What is the CSE tuition fee per year?", "..."]"""
+Return ONLY a JSON list of strings, e.g. ["What is the late fee rule for unpaid fees?", "..."]"""
 
 
 def _record_block(student_text: str | None) -> str:
@@ -138,6 +194,13 @@ NOTE_SYSTEM = f"""Task: note
 You are a researcher writing a short evidence note for one sub-question.
 {GROUNDING_RULE}
 Write 2-5 bullet points in English with exact figures and inline citations [n].
+Every bullet must be stated in the context itself. Never infer or guess a number (a limit, CGPA,
+count or amount) that the context does not state for exactly that thing; for a part that is not
+stated, write "Not stated in the provided documents".
+For a figure from a table, name its row and column (for example "Open / General, hostel resident,
+per year: Rs X") and say what a total includes when the document says so.
+Copy amounts with their period (per semester, per year, one-time), published totals, thresholds and
+rule wording exactly as written (e.g. "at least 75%", "not eligible until ... is cleared").
 If nothing relevant is in the context, write exactly: "Not found in the provided documents." """
 
 
@@ -157,6 +220,10 @@ def note_messages(main_question: str, sub_question: str, context: str) -> list[B
 
 GAP_SYSTEM = """Task: gap
 You check whether research notes are enough to answer the main question.
+Information is missing when a part of the question has no exact answer yet, or when a note names a rule,
+class, category or limit without its criteria (for example "is not eligible for X" without the conditions
+for X). Phrase new sub-questions with the words the documents likely use (for example "What CGPA is
+needed for <class name>?").
 If important information is missing, return a JSON list with at most 2 NEW sub-questions
 (do not repeat the ones already researched). If the notes are enough, or the documents
 clearly do not cover the gap, return exactly: none"""
@@ -176,6 +243,18 @@ You write the final answer for a student of {COLLEGE_NAME} from research notes.
 Use ONLY facts from the notes and keep their citation numbers exactly as given, like [1] or [3].
 Never add facts that are not in the notes. If the notes say something was not found,
 state clearly that the college documents provided do not contain it.
+If two notes give different figures for the same thing, use the one that quotes the rule with its exact
+wording and drop the other; never state both.
+Answer every part of the question and nothing else: leave out notes that do not help answer it,
+and do not add branches, groups or topics that the question does not mention.
+{NUMBERS_RULE} For multi-step totals write the calculation as numbered steps, period by period
+(per-semester total, then per-year total, then one-time charges), and state each intermediate total
+as well as the final total. Prefer a total stated in the notes over your own sum when both exist.
+A published total already includes its parts (for example a hostel-resident bill already includes the
+hostel fee): never add those parts again, and use only amounts that appear in the notes.
+Keep eligibility conditions and thresholds in the notes' own words (for example keep "no unpaid dues",
+do not reword it as "should pay dues"), and keep the citation numbers on every figure.
+{STEPS_RULE}
 If the asking student's record is given, use it for their personal facts (call it "your record",
 no citation number) and copy its numbers and dates exactly. Never mention any other student.
 {LANGUAGE_RULE}
@@ -191,7 +270,7 @@ def writer_messages(
         HumanMessage(
             content=(
                 f"Question: {question}{_record_block(student_text)}\n\n"
-                f"Research notes:\n{notes_text}\n\nSources:\n{sources_text}"
+                f"Research notes:\n{notes_text}\n\nSources:\n{sources_text}{answer_hints(question)}"
             )
         ),
     ]
