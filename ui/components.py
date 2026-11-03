@@ -436,7 +436,17 @@ def user_card_html(user: Mapping, record: Mapping | None = None) -> str:
 # ---------- student records (dashboard + admin) ----------
 
 LOW_ATTENDANCE = 75.0
-FEE_STATUS_LABELS = {"paid": "Paid", "partially_paid": "Partially paid", "overdue": "Overdue", "due": "Due"}
+FEE_STATUS_LABELS = {
+    "paid": "Paid", "partially_paid": "Partially paid", "unpaid": "Unpaid", "overdue": "Overdue", "due": "Due",
+}
+
+
+def effective_fee_status(fees: Mapping) -> str:
+    """Status to display: a not-overdue bill with nothing paid yet (new admission) reads "unpaid"."""
+    status = str((fees or {}).get("status") or "").lower()
+    if status == "partially_paid" and not (fees or {}).get("paid") and (fees or {}).get("due"):
+        return "unpaid"
+    return status
 
 
 def all_records_safe() -> list[dict]:
@@ -497,7 +507,7 @@ def student_flags(record: Mapping) -> dict:
     attendance = (record.get("attendance") or {}).get("overall_pct")
     books = library.get("books_issued") or []
     return {
-        "fee_status": str(fees.get("status") or "").lower(),
+        "fee_status": effective_fee_status(fees),
         "fees_due": float(fees.get("due") or 0),
         "fees_paid": float(fees.get("paid") or 0),
         "overdue_books": sum(1 for b in books if isinstance(b, Mapping) and book_is_overdue(b, today)),
@@ -553,7 +563,7 @@ def student_kpis_html(record: Mapping) -> str:
     book_accent = BASELINE_COLOR if (flags["fine"] or overdue) else SIMPLE_COLOR
     pct = flags["attendance"]
     if pct is None:
-        att_value, att_sub, att_accent = "—", "No attendance yet", ROUTER_COLOR
+        att_value, att_sub, att_accent = "—", "Not recorded yet", ROUTER_COLOR
     else:
         att_value = f"{pct:.1f}%"
         att_sub = "Below the 75% minimum" if flags["low_attendance"] else "Above the 75% minimum"
@@ -630,18 +640,24 @@ def _attendance_section(record: Mapping) -> None:
     attendance = record.get("attendance") or {}
     courses = attendance.get("courses") or []
     overall = attendance.get("overall_pct")
-    caption = f"Overall {overall}% · minimum {LOW_ATTENDANCE:.0f}%" if overall is not None else "No attendance recorded yet"
+    caption = f"Overall {overall}% · minimum {LOW_ATTENDANCE:.0f}%" if overall is not None else "Not recorded yet"
     section_header("Attendance", caption)
-    if not courses:
+    courses = [c for c in courses if isinstance(c, Mapping)]
+    recorded = [c for c in courses if c.get("pct") is not None]
+    pending = [c for c in courses if c.get("pct") is None]
+    if pending:
+        names = ", ".join(f"{c.get('code', '')} {c.get('name', '')}".strip() for c in pending)
+        st.caption(f"Not recorded yet: {names}")
+    if not recorded:
         return
     df = pd.DataFrame(
         [
             {
                 "Course": f"{c.get('code', '')} {c.get('name', '')}".strip(),
-                "Attendance (%)": float(c.get("pct") or 0),
-                "Status": "Below 75%" if float(c.get("pct") or 0) < LOW_ATTENDANCE else "OK",
+                "Attendance (%)": float(c["pct"]),
+                "Status": "Below 75%" if float(c["pct"]) < LOW_ATTENDANCE else "OK",
             }
-            for c in courses
+            for c in recorded
         ]
     )
     bars = alt.Chart(df).mark_bar(cornerRadiusEnd=4).encode(
@@ -688,7 +704,10 @@ def _exams_section(record: Mapping) -> None:
 def _hostel_section(record: Mapping) -> None:
     hostel = record.get("hostel")
     section_header("Hostel")
-    if hostel:
+    if hostel and str(hostel.get("room") or "").lower() == "to be allotted":
+        # New admissions who chose hostel get a room later.
+        title, sub, icon = "Room to be allotted", "Hostel requested; the warden allots rooms before term starts", "🏠"
+    elif hostel:
         room = " · ".join(str(x) for x in (f"Block {hostel['block']}" if hostel.get("block") else None,
                                           f"Room {hostel['room']}" if hostel.get("room") else None) if x)
         title, sub, icon = room or "Hostel allotted", "Hostel room for this academic year", "🏠"

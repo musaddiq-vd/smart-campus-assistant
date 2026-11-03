@@ -9,6 +9,8 @@ __pycache__/
 data/users.json
 data/sessions.json
 data/chats/
+data/app.db
+data/app.db-*
 data/demo_credentials.csv
 
 # Local notes for Claude (keep off GitHub)

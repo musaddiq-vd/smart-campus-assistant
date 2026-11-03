@@ -100,27 +100,52 @@ def render_sidebar(user: dict) -> None:
         )
 
 
-def account_page():
-    return st.Page("ui/account.py", title="Account", icon=":material/manage_accounts:", url_path="account")
+def account_page(default: bool = False):
+    return st.Page("ui/account.py", title="Account", icon=":material/manage_accounts:", url_path="account",
+                   default=default)
 
 
 def pages_for(user: dict) -> list:
+    # A user signed in with a temporary password lands on Account until it is changed.
+    must_change = bool(user.get("must_change_password"))
     if user["role"] == "admin":
         pages = [
-            st.Page("ui/admin_overview.py", title="Overview", icon=":material/insights:", url_path="overview", default=True),
+            st.Page("ui/admin_overview.py", title="Overview", icon=":material/insights:", url_path="overview",
+                    default=not must_change),
             st.Page("ui/admin_students.py", title="Students", icon=":material/group:", url_path="students"),
         ]
         # Registered only when the page file exists, so a missing file never crashes the app.
         if (ROOT / "ui" / "admin_notices.py").exists():
             pages.append(st.Page("ui/admin_notices.py", title="Notices", icon=":material/campaign:", url_path="notices"))
         pages.append(st.Page("ui/chat.py", title="Ask", icon=":material/forum:", url_path="ask"))
-        pages.append(account_page())
+        pages.append(account_page(default=must_change))
         return pages
     return [
-        st.Page("ui/chat.py", title="Ask", icon=":material/forum:", url_path="ask", default=True),
+        st.Page("ui/chat.py", title="Ask", icon=":material/forum:", url_path="ask", default=not must_change),
         st.Page("ui/student_home.py", title="My dashboard", icon=":material/dashboard:", url_path="my-dashboard"),
-        account_page(),
+        account_page(default=must_change),
     ]
+
+
+def must_change_flag(auth, token: str | None) -> bool:
+    """After a refresh: does the restored account still have to change its temporary password?"""
+    getter = getattr(auth, "get_session_user", None)
+    if not token or not callable(getter):
+        return False
+    try:
+        return bool((getter(token) or {}).get("must_change_password"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def must_change_banner(pages: list, current) -> None:
+    """Warning on every page (except Account itself) until the temporary password is changed."""
+    st.warning("You signed in with a temporary password. Please set your own password now.",
+               icon=":material/password:")
+    # Match by title: a default page reports an empty url_path.
+    account = next((p for p in pages if p.title == "Account"), None)
+    if account is not None and getattr(current, "title", None) != "Account":
+        st.page_link(account, label="Change password in Account", icon=":material/arrow_forward:")
 
 
 user = current_user()
@@ -129,6 +154,7 @@ if user is None and not st.session_state.get("logged_out"):
     auth_module, _ = load_auth()
     user = restore_user(auth_module)
     if user:
+        user["must_change_password"] = must_change_flag(auth_module, st.session_state.get("session_token"))
         st.session_state["user"] = user
 flush_cookie_actions()
 if user is None:
@@ -136,4 +162,11 @@ if user is None:
                   position="hidden").run()
 else:
     render_sidebar(user)
-    st.navigation(pages_for(user), position="top").run()
+    pages = pages_for(user)
+    nav = st.navigation(pages, position="top")
+    welcome = st.session_state.pop("welcome_toast", None)
+    if welcome:
+        st.toast(welcome, icon=":material/celebration:")
+    if user.get("must_change_password"):
+        must_change_banner(pages, nav)
+    nav.run()

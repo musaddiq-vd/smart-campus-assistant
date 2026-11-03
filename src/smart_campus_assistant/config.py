@@ -50,7 +50,8 @@ class Settings:
     max_research_loops: int
     data_dir: Path  # college documents (markdown)
     students_file: Path  # synthetic student records
-    users_file: Path  # login accounts (hashed passwords only)
+    users_file: Path  # legacy JSON accounts (imported into db_file once)
+    db_file: Path  # SQLite: accounts, sessions, reset codes, self-registered students
     results_dir: Path
 
 
@@ -70,5 +71,6 @@ def get_settings() -> Settings:
         data_dir=PROJECT_ROOT / "data" / "college",
         students_file=PROJECT_ROOT / "data" / "students.json",
         users_file=Path(os.getenv("SCA_USERS_FILE", str(PROJECT_ROOT / "data" / "users.json"))),
+        db_file=Path(os.getenv("SCA_DB_FILE", str(PROJECT_ROOT / "data" / "app.db"))),
         results_dir=PROJECT_ROOT / "eval" / "results",
     )

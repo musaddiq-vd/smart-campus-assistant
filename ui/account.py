@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from ui.components import hero_html, require_role  # noqa: E402
-from ui.login import _lockout_message, get_throttle, load_auth  # noqa: E402
+from ui.login import _lockout_message, get_throttle, load_auth, problems_text  # noqa: E402
 from ui.theme import inject_css  # noqa: E402
 
 FIELDS = ("pw_current", "pw_new", "pw_confirm")
@@ -28,6 +28,31 @@ FAILED = "The password could not be changed. Please try again."
 
 def min_length(auth) -> int:
     return int(getattr(auth, "MIN_PASSWORD_LENGTH", DEFAULT_MIN_LENGTH) or DEFAULT_MIN_LENGTH)
+
+
+def rule_problems(auth, new: str, current: str) -> list[str]:
+    """Rules a new password breaks: the backend validator when it exists, else the local checks."""
+    validate = getattr(auth, "validate_new_password", None)
+    if callable(validate):
+        try:
+            problems = [str(p) for p in (validate(new) or [])]
+        except Exception:  # noqa: BLE001
+            problems = None
+        if problems is not None:
+            if new and new == current:
+                problems.append("It must be different from the current password.")
+            return problems
+    return password_problems(new, current, min_length(auth))
+
+
+def rules_text(auth, min_len: int) -> str:
+    rules = getattr(auth, "PASSWORD_RULES", None) if auth is not None else None
+    if isinstance(rules, (list, tuple)):
+        rules = " · ".join(str(r) for r in rules if r)
+    if rules:
+        return str(rules)
+    return (f"At least {min_len} characters, with a letter and a digit. "
+            "Longer passwords with mixed case and symbols are stronger.")
 
 
 def password_problems(new: str, current: str, min_len: int) -> list[str]:
@@ -80,9 +105,9 @@ def _change_password() -> None:
     if new != confirm:
         _set_result("error", "The new passwords do not match.")
         return
-    problems = password_problems(new, current, min_length(auth))
+    problems = rule_problems(auth, new, current)
     if problems:
-        _set_result("error", f"The new password is too weak ({strength_label(new)}). It needs: {', '.join(problems)}.")
+        _set_result("error", f"The new password is too weak ({strength_label(new)}). {problems_text(problems)}")
         return
 
     throttle = get_throttle(auth)
@@ -98,10 +123,17 @@ def _change_password() -> None:
     throttle.record_success(email)
 
     try:
-        auth.set_password(email, new)  # also revokes every session of this user
+        auth.set_password(email, new)  # also revokes every session of this user (and clears must_change_password)
+    except ValueError as exc:
+        _set_result("error", str(exc) or FAILED)
+        return
     except Exception:  # noqa: BLE001
         _set_result("error", FAILED)
         return
+
+    # The temporary password is gone: drop the banner and the forced Account landing.
+    user = {**user, "must_change_password": False}
+    st.session_state["user"] = user
 
     # The old session is gone: start a new one so this browser stays signed in.
     token = None
@@ -127,19 +159,27 @@ def render_page() -> None:
     auth_module, _ = load_auth()
     min_len = min_length(auth_module) if auth_module is not None else DEFAULT_MIN_LENGTH
 
+    must_change = bool(user.get("must_change_password"))
+
     st.markdown(
         hero_html("Account", str(user.get("name") or user.get("email") or ""),
                   f"Signed in as {user.get('email') or ''}. Change your password below."),
         unsafe_allow_html=True,
     )
+    if must_change:
+        st.info(
+            "**Set your own password.** You signed in with a temporary password from the admin office. "
+            "Enter that temporary password as the current password, then choose a new one.",
+            icon=":material/password:",
+        )
 
     with st.form("password_form", border=True, enter_to_submit=True):
-        st.markdown("**Change password**")
-        st.text_input("Current password", key="pw_current", type="password", autocomplete="current-password")
+        st.markdown("**Set a new password**" if must_change else "**Change password**")
+        st.text_input("Temporary password" if must_change else "Current password", key="pw_current",
+                      type="password", autocomplete="current-password")
         st.text_input("New password", key="pw_new", type="password", autocomplete="new-password")
         st.text_input("Confirm new password", key="pw_confirm", type="password", autocomplete="new-password")
-        st.caption(f"At least {min_len} characters, with a letter and a digit. "
-                   "Longer passwords with mixed case and symbols are stronger.")
+        st.caption(rules_text(auth_module, min_len))
         st.form_submit_button("Change password", type="primary", on_click=_change_password, icon=":material/key:",
                               key="pw_submit")
 

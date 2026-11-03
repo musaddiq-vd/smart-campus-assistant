@@ -24,10 +24,95 @@ from ui.components import (  # noqa: E402
     student_flags,
     student_label,
 )
+from ui.login import load_auth  # noqa: E402
 from ui.theme import inject_css  # noqa: E402
 
 BRANCH_ORDER = ["CSE", "ECE", "ME", "CE"]
 NONE = "—"
+RESET_FAILED = "The password could not be reset. Please try again."
+
+
+def account_emails(auth) -> dict[str, str] | None:
+    """Student ID -> account email for every student account; None when accounts cannot be read."""
+    loader = getattr(auth, "load_users", None) if auth is not None else None
+    if not callable(loader):
+        return None
+    try:
+        users = loader() or {}
+    except Exception:  # noqa: BLE001
+        return None
+    out = {}
+    for email, record in users.items():
+        record = record if isinstance(record, dict) else {}
+        sid = str(record.get("student_id") or "").upper()
+        if sid and record.get("role", "student") == "student":
+            out[sid] = str(record.get("email") or email)
+    return out
+
+
+def _ask_reset(student_id: str) -> None:
+    st.session_state["reset_confirm"] = student_id
+    st.session_state.pop("reset_result", None)
+
+
+def _cancel_reset() -> None:
+    st.session_state.pop("reset_confirm", None)
+
+
+def _do_reset(student_id: str, email: str) -> None:
+    """Confirmed: create a temporary password; it is shown exactly once on the next run."""
+    st.session_state.pop("reset_confirm", None)
+    admin = st.session_state.get("user") or {}
+    auth, _ = load_auth()
+    try:
+        temp = auth.admin_reset_password(email, by_admin_email=str(admin.get("email") or ""))
+    except ValueError as exc:
+        st.session_state["reset_result"] = {"sid": student_id, "error": str(exc) or RESET_FAILED}
+        return
+    except Exception:  # noqa: BLE001
+        st.session_state["reset_result"] = {"sid": student_id, "error": RESET_FAILED}
+        return
+    st.session_state["reset_result"] = {"sid": student_id, "temp": str(temp)}
+
+
+def render_account_box(record: dict) -> None:
+    """Account status and the admin "Reset password" flow for one student."""
+    sid = str(record.get("student_id") or "").upper()
+    auth, _ = load_auth()
+    emails = account_emails(auth)
+    section_header("Account")
+    if emails is None:
+        st.caption("Account status is not available right now.")
+        return
+    email = emails.get(sid)
+    if not email:
+        st.caption("No account yet. The student has not registered.")
+        return
+    st.caption(f"Sign-in email: {email}")
+
+    result = st.session_state.get("reset_result")
+    if result and result.get("sid") == sid:
+        st.session_state.pop("reset_result", None)  # show once: gone on the next run
+        if result.get("error"):
+            st.error(result["error"], icon=":material/error:")
+        else:
+            with st.container(key="temp_password_box"):
+                st.markdown("**Temporary password** (shown only once)")
+                st.code(result["temp"], language=None)
+                st.caption("Use the copy button, then share it securely with the student. "
+                           "The student must change it at next sign-in. All their devices were signed out.")
+        return
+    if not hasattr(auth, "admin_reset_password"):
+        return
+    if st.session_state.get("reset_confirm") == sid:
+        st.warning(f"Reset the password of {record.get('name') or sid}? Their current password stops working "
+                   "and every device is signed out.", icon=":material/warning:")
+        c1, c2 = st.columns(2)
+        c1.button("Yes, reset password", type="primary", key="reset_yes", on_click=_do_reset, args=(sid, email),
+                  width="stretch")
+        c2.button("Cancel", key="reset_cancel", on_click=_cancel_reset, width="stretch")
+    else:
+        st.button("Reset password", icon=":material/lock_reset:", key="reset_ask", on_click=_ask_reset, args=(sid,))
 
 
 def matches(record: dict, flags: dict, query: str, branches: list, years: list, statuses: list, low_only: bool) -> bool:
@@ -115,3 +200,4 @@ if picked and picked != NONE:
     record = next(r for r in shown if r["student_id"] == picked)
     with st.container(border=True, key="student_detail"):
         render_student_dashboard(record)
+        render_account_box(record)

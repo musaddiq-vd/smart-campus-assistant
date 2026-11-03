@@ -80,6 +80,7 @@ overdue_accounts = sum(1 for f in flags if f["fee_status"] == "overdue")
 overdue_book_students = sum(1 for f in flags if f["overdue_books"])
 fines = sum(f["fine"] for f in flags)
 low_att = sum(1 for f in flags if f["low_attendance"])
+no_att = sum(1 for f in flags if f["attendance"] is None)
 backlog_students = sum(1 for f in flags if f["backlogs"])
 total_backlogs = sum(f["backlogs"] for f in flags)
 
@@ -90,7 +91,8 @@ cards = [
                   BASELINE_COLOR if overdue_accounts else PERSONAL_COLOR),
     kpi_card_html("Overdue books", plural(overdue_book_students, "student"), f"Library fines {format_rupees(fines)} in total",
                   BASELINE_COLOR if overdue_book_students else SIMPLE_COLOR),
-    kpi_card_html("Low attendance", plural(low_att, "student"), "Below the 75% minimum",
+    kpi_card_html("Low attendance", plural(low_att, "student"),
+                  "Below the 75% minimum" + (f" · {no_att} not recorded yet" if no_att else ""),
                   BASELINE_COLOR if low_att else SIMPLE_COLOR),
     kpi_card_html("Backlogs", plural(backlog_students, "student"), f"{plural(total_backlogs, 'backlog')} in total", DEEP_COLOR),
 ]

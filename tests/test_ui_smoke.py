@@ -264,7 +264,9 @@ def test_student_login_pages_and_sidebar(backend):
     assert backend.pages[-1] == STUDENT_PAGES
     assert "login_password" not in at.session_state or at.session_state["login_password"] == ""
     user = at.session_state["user"]
-    assert user["student_id"] == "XYZ24CSE001" and "password" not in str(user).lower()
+    assert user["student_id"] == "XYZ24CSE001" and "student-pass" not in str(user)
+    assert set(user) == {"email", "role", "name", "student_id", "must_change_password"}
+    assert user["must_change_password"] is False
     side = "\n".join(str(m.value) for m in at.sidebar.markdown)
     assert "Aarav Sharma" in side and "aarav@xyz.edu.example" in side and "XYZ24CSE001" in side and "Student" in side
     assert "Diya" not in all_text(at) + side

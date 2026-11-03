@@ -377,6 +377,24 @@ h1, h2, h3 {{ letter-spacing: -0.02em; }}
 .sca-login-head p {{ color: var(--sca-muted); font-size: .9rem; margin: .25rem 0 0 0; }}
 .sca-login-note {{ text-align: center; font-size: .78rem; color: var(--sca-muted); margin-top: .6rem; }}
 .sca-login-note code {{ font-size: .76rem; }}
+.st-key-login_views {{ margin: .35rem 0 .2rem 0; }}
+.st-key-login_views button p {{ font-size: .82rem; white-space: nowrap; }}
+.sca-login-sub {{ font-weight: 600; font-size: .95rem; margin: .3rem 0 .1rem 0; }}
+.sca-demo-code {{
+  margin: .4rem 0 .8rem 0; padding: .7rem .9rem; border-radius: 12px; text-align: center;
+  border: 1px dashed color-mix(in srgb, var(--sca-personal) 70%, transparent);
+  background: color-mix(in srgb, var(--sca-personal) 12%, transparent);
+}}
+.sca-demo-code .lbl {{ font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  color: color-mix(in srgb, var(--sca-personal) 70%, currentColor); }}
+.sca-demo-code .code {{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.6rem;
+  font-weight: 700; letter-spacing: .35em; margin: .15rem 0; }}
+.sca-demo-code .hint {{ font-size: .74rem; color: var(--sca-muted); }}
+.st-key-temp_password_box {{
+  padding: .8rem 1rem; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--sca-personal) 55%, transparent);
+  background: color-mix(in srgb, var(--sca-personal) 10%, transparent);
+}}
 
 /* Student dashboard header */
 .sca-student-head {{
