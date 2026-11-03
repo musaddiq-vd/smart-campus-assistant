@@ -25,14 +25,10 @@ def read_token() -> str | None:
 
 
 def _run_cookie_script(cookie: str) -> None:
-    import streamlit.components.v1 as components
-
     secure = "; Secure" if _is_https() else ""
-    # json.dumps gives a safely quoted JS string.
-    components.html(
-        f"<script>window.parent.document.cookie = {json.dumps(cookie + secure)};</script>",
-        height=0,
-    )
+    # json.dumps gives a safely quoted JS string. st.html runs in the page itself
+    # (components.v1.html is deprecated and ran in an iframe).
+    st.html(f"<script>document.cookie = {json.dumps(cookie + secure)};</script>", unsafe_allow_javascript=True)
 
 
 def _is_https() -> bool:

@@ -408,3 +408,17 @@ def test_chat_history_survives_refresh_and_clear(backend):
     again.session_state["user"] = dict(ACCOUNTS["aarav@xyz.edu.example"][1])
     again.run()
     assert "library fine per day?" not in [str(m.value) for m in again.markdown]
+
+
+def test_interrupted_question_offers_retry(backend):
+    """A question left without an answer (run stopped mid-way) shows a Retry button."""
+    at = as_student()
+    # Simulate a run that was stopped after the question was stored but before the answer.
+    at.session_state["messages"] = [{"role": "user", "content": "total kitne semester h?"}]
+    at.run()
+    assert not at.exception
+    assert any("interrupted" in str(w.value) for w in at.warning)
+    at.button(key="retry_interrupted").click().run()
+    assert not at.exception
+    roles = [m["role"] for m in at.session_state["messages"]]
+    assert roles[-2:] == ["user", "assistant"]

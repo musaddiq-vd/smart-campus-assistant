@@ -126,13 +126,34 @@ def step_detail(node: str, update: dict, student_id: str | None = None) -> dict:
     return step
 
 
+DEEP_WAIT_HINT = "Deep research can take up to a minute. Please stay on this page until the answer appears."
+
+
 def live_html(route: str | None, steps: list[dict], running: str) -> str:
     """Flow strip so far plus a pulsing pill for the step that is running."""
     done = flow_strip_html(route, steps)
     pill = f'<span class="step" style="opacity:.65">⏳ {running}</span>'
-    if done:
-        return done.replace("</div>", f'<span class="arrow">→</span>{pill}</div>', 1)
-    return f'<div class="sca-flow">{pill}</div>'
+    strip = (done.replace("</div>", f'<span class="arrow">→</span>{pill}</div>', 1)
+             if done else f'<div class="sca-flow">{pill}</div>')
+    if route == "deep":
+        # Leaving the page stops the run, so say so while the slow path works.
+        strip += f'<div class="sca-wait-hint">⏱️ {DEEP_WAIT_HINT}</div>'
+    return strip
+
+
+def interrupted_question() -> str | None:
+    """The last question if it never got an answer (the run was stopped mid-way), else None."""
+    messages = st.session_state.get("messages") or []
+    if messages and messages[-1].get("role") == "user":
+        return messages[-1].get("content")
+    return None
+
+
+def retry_interrupted() -> None:
+    """Drop the unanswered question and ask it again."""
+    messages = st.session_state.get("messages") or []
+    if messages and messages[-1].get("role") == "user":
+        st.session_state.pending_question = messages.pop()["content"]
 
 
 def run_question(question: str, demo: bool, live, student_id: str | None = None) -> dict:
@@ -334,6 +355,16 @@ for msg in st.session_state.messages:
 
 typed = st.chat_input("Ask about the college…" if is_admin else "Ask about exams, fees, your books…")
 question = typed or st.session_state.pop("pending_question", None)
+
+# A question left without an answer means its run was stopped (e.g. the page changed
+# during deep research). Offer a retry instead of leaving it hanging silently.
+if not question and interrupted_question():
+    with st.chat_message("assistant", avatar=":material/school:"):
+        st.warning(
+            "This answer was interrupted before it finished (the page changed while I was still working).",
+            icon=":material/hourglass_disabled:",
+        )
+        st.button("Retry", icon=":material/refresh:", on_click=retry_interrupted, key="retry_interrupted")
 
 if not st.session_state.messages and not question:
     render_empty_state(user)

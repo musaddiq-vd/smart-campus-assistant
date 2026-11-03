@@ -148,6 +148,13 @@ h1, h2, h3 {{ letter-spacing: -0.02em; }}
 .sca-timeline .detail ol {{ margin: .25rem 0 0 1.1rem; padding: 0; list-style: decimal; }}
 .sca-timeline .detail ol li {{ font-size: .82rem; margin: 0 0 .1rem 0; padding: 0; }}
 
+/* Shown under the live flow strip while deep research runs */
+.sca-wait-hint {{
+  margin-top: .45rem; padding: .4rem .65rem; border-radius: 10px; font-size: .8rem;
+  color: var(--sca-muted); background: color-mix(in srgb, var(--sca-deep) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sca-deep) 22%, transparent);
+}}
+
 /* Flow strip: one compact line of the steps that ran */
 .sca-flow {{
   display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .25rem; margin: .75rem 0 .2rem 0;
