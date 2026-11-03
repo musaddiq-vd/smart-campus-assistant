@@ -53,6 +53,20 @@ SCA_DEMO_MODE=1 streamlit run app.py
 2. Index the documents: `python -m smart_campus_assistant.ingest` (use `--dry-run` to only count chunks).
 3. Run the app: `streamlit run app.py`, or open LangGraph Studio with `langgraph dev`.
 
+### Deploy a free public demo (Streamlit Community Cloud)
+The hosted demo runs in **demo mode**: a fake LLM and retriever, so no AWS keys and no cost.
+
+1. Push this repo to GitHub.
+2. On [share.streamlit.io](https://share.streamlit.io), create an app from the repo: branch `main`, main file `app.py`, Python 3.11.
+3. In **Advanced settings → Secrets**, add:
+   ```toml
+   SCA_DEMO_MODE = "1"
+   SCA_DEMO_PASSWORD = "choose-a-demo-password"
+   ```
+   On first start the app creates the demo accounts (every student email in `data/students.json` plus `admin@xyz.edu.example`), all with that password.
+
+The host's disk is temporary, so sessions, chat history and new notices reset when the app restarts.
+
 ### Evaluation (command line only)
 `python eval/run_eval.py` runs 45 labelled questions and compares the router against an "always deep" baseline (route accuracy, tokens, cost, latency). Use `--fake` to run it offline.
 
