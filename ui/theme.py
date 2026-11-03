@@ -351,6 +351,32 @@ h1, h2, h3 {{ letter-spacing: -0.02em; }}
 }}
 .sca-stats.compact {{ margin-top: .55rem; gap: .3rem; }}
 .sca-stats.compact .row {{ grid-template-columns: 1fr auto; padding: .3rem .55rem; }}
+.sca-stats .row.sem {{ --c: var(--sca-brand); }}
+.sca-stats.compact .row.sem .bar {{ margin-top: .3rem; }}
+
+/* Remaining semesters dropdown (sidebar) */
+.sca-sems {{ display: flex; flex-direction: column; gap: .45rem; }}
+.sca-sems .sem-item {{
+  border: 1px solid var(--sca-card-border); border-radius: 10px; padding: .45rem .6rem; background: var(--sca-card-bg);
+}}
+.sca-sems .sem-item.current {{
+  border-color: color-mix(in srgb, var(--sca-brand) 45%, transparent);
+  background: color-mix(in srgb, var(--sca-brand) 8%, transparent);
+}}
+.sca-sems .head {{ display: flex; align-items: center; gap: .45rem; }}
+.sca-sems .num {{
+  width: 1.35rem; height: 1.35rem; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+  font-size: .7rem; font-weight: 700; color: white; background: linear-gradient(135deg, var(--sca-brand), var(--sca-deep));
+}}
+.sca-sems .title {{ font-weight: 650; font-size: .82rem; }}
+.sca-sems .now {{
+  margin-left: auto; font-size: .66rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--sca-brand); background: color-mix(in srgb, var(--sca-brand) 14%, transparent); padding: .05rem .4rem; border-radius: 999px;
+}}
+.sca-sems ul {{ margin: .3rem 0 0 1.85rem; padding: 0; }}
+.sca-sems li {{ font-size: .76rem; line-height: 1.4; margin: 0; padding: 0; }}
+.sca-sems .none {{ font-size: .75rem; color: var(--sca-muted); margin: .25rem 0 0 1.85rem; font-style: italic; }}
+.sca-sems .note {{ font-size: .72rem; color: var(--sca-muted); margin: .25rem 0 0 1.85rem; }}
 
 /* Role badge */
 .sca-role {{

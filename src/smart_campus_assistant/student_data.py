@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from functools import lru_cache
 from datetime import date
 from pathlib import Path
 
@@ -435,6 +436,62 @@ def current_subjects(record: dict) -> list[str]:
         exams = (record.get("exams") or {}).get("upcoming") or []
         subjects = [f"{e.get('course_code', '')} {e.get('course_name', '')}".strip() for e in exams if isinstance(e, dict)]
     return [s for s in subjects if s]
+
+
+_SEMESTER_LINE = re.compile(r"^\s*-\s*Semester\s+(\d+)\s*:\s*(.+)$", re.IGNORECASE)
+_AFTER_SEMESTER_NOTE = re.compile(r"^\s*-\s*(.*\bafter Semester\s+(\d+)\b.*)$", re.IGNORECASE)
+
+
+@lru_cache(maxsize=1)
+def _curriculum_doc() -> str:
+    path = get_settings().data_dir / "branches_and_programmes.md"
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def curriculum_by_semester(branch: str) -> tuple[dict[int, list[str]], dict[int, str]]:
+    """Published subjects per semester for a branch, plus notes such as an internship after a semester.
+
+    Read from branches_and_programmes.md: the common first-year paragraph gives Semester 1 and
+    the "<BRANCH> curriculum highlights" list gives the branch semesters it names (not all of them).
+    """
+    text = _curriculum_doc()
+    subjects: dict[int, list[str]] = {}
+    notes: dict[int, str] = {}
+    first_year = re.search(r"Semester 1 courses:\s*(.+?)(?:, plus|\.)", text)
+    if first_year:
+        courses = re.split(r",\s*|\s+and\s+", first_year.group(1))
+        subjects[1] = [c.strip() for c in courses if c.strip()]
+
+    if re.search(r"Semesters 1 and 2\)? (?:is|are) common", text):
+        notes[2] = "Common first-year semester for all branches."
+
+    section = re.search(rf"^###\s+{re.escape(branch)} curriculum highlights\s*$(.*?)(?=^#)", text, re.M | re.S)
+    for line in (section.group(1).splitlines() if section else []):
+        if m := _SEMESTER_LINE.match(line):
+            subjects[int(m.group(1))] = [s.strip() for s in m.group(2).split(",") if s.strip()]
+        elif m := _AFTER_SEMESTER_NOTE.match(line):
+            notes[int(m.group(2))] = m.group(1).strip()
+    return subjects, notes
+
+
+def semester_plan(record: dict) -> list[dict]:
+    """One row per semester: status (done / current / upcoming), subjects and an optional note."""
+    try:
+        current = int(record.get("semester"))
+    except (TypeError, ValueError):
+        current = 0
+    published, notes = curriculum_by_semester(str(record.get("branch") or ""))
+    plan = []
+    for sem in range(1, PROGRAMME_SEMESTERS + 1):
+        if sem == current:
+            status, subjects = "current", current_subjects(record) or published.get(sem, [])
+        else:
+            status, subjects = ("done" if sem < current else "upcoming"), published.get(sem, [])
+        plan.append({"semester": sem, "status": status, "subjects": subjects, "note": notes.get(sem)})
+    return plan
 
 
 def _programme_lines(record: dict) -> list[str]:

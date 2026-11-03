@@ -279,3 +279,17 @@ def test_branch_scoped_query_adds_own_branch_only_when_missing():
     )
     assert branch_scoped_query("ECE placements?", record) == "ECE placements?"  # branch already named
     assert branch_scoped_query("Library fine?", None) == "Library fine?"
+
+
+def test_curriculum_and_semester_plan_from_docs():
+    from smart_campus_assistant import student_data
+
+    subjects, notes = student_data.curriculum_by_semester("CSE")
+    assert {1, 3, 5, 7} <= set(subjects)
+    assert "Operating Systems" in subjects[5]
+    assert "internship" in notes[6]
+    plan = student_data.semester_plan({"branch": "CSE", "semester": 3,
+                                       "attendance": {"courses": [{"code": "CS301", "name": "Data Structures"}]}})
+    assert [p["status"] for p in plan] == ["done", "done", "current"] + ["upcoming"] * 5
+    assert plan[2]["subjects"] == ["CS301 Data Structures"]  # the record wins for the current semester
+    assert plan[3]["subjects"] == []  # Semester 4 is not published

@@ -422,3 +422,16 @@ def test_interrupted_question_offers_retry(backend):
     assert not at.exception
     roles = [m["role"] for m in at.session_state["messages"]]
     assert roles[-2:] == ["user", "assistant"]
+
+
+def test_semester_row_and_remaining_list_html():
+    assert "3 of 8" in components.semester_row_html({"semester": 3})
+    assert components.semester_row_html({"semester": None}) == ""
+    plan = [
+        {"semester": 2, "status": "done", "subjects": ["X"], "note": None},
+        {"semester": 3, "status": "current", "subjects": ["Data Structures"], "note": None},
+        {"semester": 4, "status": "upcoming", "subjects": [], "note": "Internship <after>"},
+    ]
+    html = components.remaining_semesters_html(plan)
+    assert "Semester 2" not in html and "Current" in html and "Data Structures" in html
+    assert "Subjects not published yet" in html and "&lt;after&gt;" in html

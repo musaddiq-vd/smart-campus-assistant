@@ -27,7 +27,14 @@ for path in (ROOT / "src", ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from ui.components import get_college_name, get_student_safe, is_demo_mode, user_card_html  # noqa: E402
+from ui.components import (  # noqa: E402
+    get_college_name,
+    get_student_safe,
+    is_demo_mode,
+    remaining_semesters_html,
+    semester_plan_safe,
+    user_card_html,
+)
 from ui.login import load_auth, render_login_page  # noqa: E402
 from ui.session import flush_cookie_actions, restore_user  # noqa: E402
 from ui.theme import inject_css  # noqa: E402
@@ -82,6 +89,17 @@ def current_user() -> dict | None:
     return None
 
 
+def render_semester_dropdown(record: dict) -> None:
+    """Collapsible list of the current and remaining semesters with their published subjects."""
+    plan = semester_plan_safe(record)
+    remaining = [row for row in plan if row.get("status") == "upcoming"]
+    if not plan or not any(row.get("status") != "done" for row in plan):
+        return
+    label = f"Remaining semesters · {len(remaining)}" if remaining else "Final semester"
+    with st.expander(label, icon=":material/school:"):
+        st.markdown(remaining_semesters_html(plan), unsafe_allow_html=True)
+
+
 def render_sidebar(user: dict) -> None:
     record = get_student_safe(user.get("student_id")) if user["role"] == "student" else None
     with st.sidebar:
@@ -93,6 +111,8 @@ def render_sidebar(user: dict) -> None:
         )
         st.markdown('<div class="sca-side-label">Signed in</div>', unsafe_allow_html=True)
         st.markdown(user_card_html(user, record), unsafe_allow_html=True)
+        if record:
+            render_semester_dropdown(record)
         st.button("Log out", icon=":material/logout:", on_click=log_out, width="stretch", key="logout")
         st.markdown(
             '<div class="sca-side-foot">Fictional college · synthetic demo data</div>',

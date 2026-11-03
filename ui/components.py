@@ -407,6 +407,64 @@ def role_badge_html(role: str | None) -> str:
     return f'<span class="sca-role {role}">{icon} {role.title()}</span>'
 
 
+TOTAL_SEMESTERS = 8
+
+
+def _semester_of(record: Mapping | None) -> int | None:
+    try:
+        sem = int((record or {}).get("semester"))
+    except (TypeError, ValueError):
+        return None
+    return sem if 1 <= sem <= TOTAL_SEMESTERS else None
+
+
+def semester_row_html(record: Mapping | None) -> str:
+    """Card row "Semester 3 of 8" with a progress bar (semesters already finished are filled)."""
+    sem = _semester_of(record)
+    if not sem:
+        return ""
+    pct = (sem - 1) / TOTAL_SEMESTERS * 100
+    return (
+        '<div class="row sem"><span class="k">Semester</span>'
+        f'<span class="v">{sem} of {TOTAL_SEMESTERS}</span>'
+        f'<div class="bar"><span style="width:{pct:.0f}%"></span></div></div>'
+    )
+
+
+def semester_plan_safe(record: Mapping | None) -> list[dict]:
+    """Per-semester plan from student_data, or [] if it is unavailable."""
+    try:
+        from smart_campus_assistant.student_data import semester_plan
+    except Exception:  # noqa: BLE001
+        return []
+    try:
+        return semester_plan(dict(record or {}))
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def remaining_semesters_html(plan: list[dict]) -> str:
+    """List of the current and upcoming semesters with their published subjects."""
+    items = []
+    for row in plan:
+        if row.get("status") == "done":
+            continue
+        current = row.get("status") == "current"
+        tag = '<span class="now">Current</span>' if current else ""
+        subjects = row.get("subjects") or []
+        body = (
+            "<ul>" + "".join(f"<li>{escape(str(s))}</li>" for s in subjects) + "</ul>"
+            if subjects else '<div class="none">Subjects not published yet</div>'
+        )
+        note = f'<div class="note">ℹ️ {escape(str(row["note"]))}</div>' if row.get("note") else ""
+        items.append(
+            f'<div class="sem-item{" current" if current else ""}">'
+            f'<div class="head"><span class="num">{int(row["semester"])}</span>'
+            f'<span class="title">Semester {int(row["semester"])}</span>{tag}</div>{body}{note}</div>'
+        )
+    return f'<div class="sca-sems">{"".join(items)}</div>' if items else ""
+
+
 def user_card_html(user: Mapping, record: Mapping | None = None) -> str:
     """Sidebar card for the signed-in account: name, email, role badge; students also get ID / branch / year."""
     record = record or {}
@@ -421,6 +479,9 @@ def user_card_html(user: Mapping, record: Mapping | None = None) -> str:
             meta = f'<div class="meta">{escape(" · ".join(bits))}</div>'
     rows = []
     if is_student:
+        semester_row = semester_row_html(record)
+        if semester_row:
+            rows.append(semester_row)
         for label, value, level in status_chips(record):
             rows.append(f'<div class="row {level}"><span class="k">{escape(label)}</span><span class="v">{escape(value)}</span></div>')
     rows_html = f'<div class="sca-stats compact">{"".join(rows)}</div>' if rows else ""
