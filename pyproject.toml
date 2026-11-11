@@ -4,23 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smart-campus-assistant"
-version = "0.1.0"
-description = "Cost-aware agentic RAG for college admission questions: a router sends simple questions to fast RAG and complex ones to deep research."
+version = "0.2.0"
+description = "Cost-aware AI student helpdesk: a router sends each question to fast RAG, the student's own record, or deep research."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "langgraph",
+    "langgraph>=1.0",
+    "langchain-core",
     "langchain-aws",
-    "langchain-community",
     "langchain-text-splitters",
-    "pypdf",
     "boto3",
     "python-dotenv",
-    "streamlit",
+    "streamlit>=1.50",
+    "pandas",
+    "altair",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "langgraph-cli[inmem]"]
+dev = ["pytest", "ruff", "langgraph-cli[inmem]"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -28,3 +29,21 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "."]
+
+[tool.ruff.lint]
+# pyflakes, pycodestyle errors, import order, common bugs.
+select = ["E", "F", "I", "B", "W"]
+ignore = [
+    "E501",  # long lines are allowed where they read better (HTML snippets, prompts)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Streamlit pages and app.py put the project root on sys.path before importing ui.*.
+"app.py" = ["E402"]
+"ui/*.py" = ["E402"]
+"tests/*.py" = ["E402", "F811"]  # F811: pytest fixtures imported from another test module

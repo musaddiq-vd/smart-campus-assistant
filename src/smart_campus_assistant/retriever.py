@@ -68,7 +68,7 @@ def clean_query(query: str, college: str | None = None) -> str:
 
 
 def search(query: str, k: int | None = None, college: str | None = None) -> list[Document]:
-    """Similarity search; `college` is a folder key such as "iit_bombay"."""
+    """Similarity search; `college` is an optional college key such as "xyz"."""
     settings = get_settings()
     k = k or settings.retriever_k
     store = get_vector_store()

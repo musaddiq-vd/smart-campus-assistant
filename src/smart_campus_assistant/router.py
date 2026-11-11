@@ -7,6 +7,7 @@ from langchain_core.runnables import RunnableConfig
 
 from smart_campus_assistant import prompts
 from smart_campus_assistant.config import ROUTES
+from smart_campus_assistant.personal import mentions_other_person
 from smart_campus_assistant.simple_rag import call_llm, mentioned_branches
 from smart_campus_assistant.state import AgentState
 from smart_campus_assistant.student_data import STUDENT_ID_RE, students_named_in
@@ -24,6 +25,14 @@ DEEP_PATTERNS = [
     r"\bshould i\b",
     r"\bplan\w*\b",
     r"\ball (four|4|branches)\b",
+    # Several documents or steps have to be combined.
+    r"\bchecklist\b",
+    r"\bcombin\w*",
+    r"\bdiffer\w*",
+    r"\baffects?\b",
+    r"\bwhat happens\b",
+    r"\bpros and cons\b",
+    r"\btotal\b.*\b(cost|kharcha)\b",
 ]
 
 # First-person words in English and Hinglish. Bare "me" is left out on purpose:
@@ -42,7 +51,14 @@ PERSONAL_TOPICS = re.compile(
 
 
 # Someone else's record ("uski fees", "her attendance"): routed to personal so that node can refuse.
-THIRD_PERSON = re.compile(r"\b(his|her|their|uska|uski|uske|unka|unki|unke|friend'?s?|dost\w*|classmate'?s?)\b")
+# Ambiguous pronouns ("their", "uski") are judged by personal.mentions_other_person.
+THIRD_PERSON = re.compile(r"\b(his|her|friend'?s?|dost\w*|classmate'?s?)\b")
+
+# Longer questions are cut to this size before any model sees them (keeps cost bounded).
+MAX_QUESTION_CHARS = 2000
+EMPTY_QUESTION_MESSAGE = (
+    'Please type a question, for example "What is the library fine per day?" or "When is my next exam?".'
+)
 
 
 def is_personal(question: str) -> bool:
@@ -52,7 +68,9 @@ def is_personal(question: str) -> bool:
         return True
     if not PERSONAL_TOPICS.search(text):
         return False
-    return bool(FIRST_PERSON.search(text) or THIRD_PERSON.search(text) or students_named_in(question))
+    return bool(
+        FIRST_PERSON.search(text) or mentions_other_person(text, THIRD_PERSON) or students_named_in(question)
+    )
 
 
 def heuristic_route(question: str) -> tuple[str, str]:
@@ -102,18 +120,30 @@ def _forced_route(config: RunnableConfig | None) -> str | None:
     return forced if forced in ROUTES else None
 
 
+def normalize_question(question: object) -> str:
+    """Collapse whitespace and cut the question to MAX_QUESTION_CHARS ("" for None / blank input)."""
+    text = " ".join(str(question or "").split())
+    return text[:MAX_QUESTION_CHARS].rstrip()
+
+
 def route_question(state: AgentState, config: RunnableConfig) -> dict:
-    question = state["question"]
+    raw = state.get("question")
+    question = normalize_question(raw)
+    if not question:
+        # Nothing to answer: reply directly with no model call (the graph ends after this node).
+        return {"question": "", "route": "simple", "route_reason": "Empty question.",
+                "answer": EMPTY_QUESTION_MESSAGE, "citations": []}
+    cleaned = {"question": question} if question != raw else {}
     forced = _forced_route(config)
     if forced:
-        return {"route": forced, "route_reason": f"Forced route: {forced}."}
+        return {**cleaned, "route": forced, "route_reason": f"Forced route: {forced}."}
 
     try:
         text, record = call_llm("router", "router", prompts.router_messages(question))
     except Exception as exc:  # model unavailable: still answer via heuristic
         route, reason = heuristic_route(question)
-        return {"route": route, "route_reason": f"{reason} (router error: {type(exc).__name__})"}
+        return {**cleaned, "route": route, "route_reason": f"{reason} (router error: {type(exc).__name__})"}
 
     parsed = parse_route(text)
     route, reason = parsed if parsed else heuristic_route(question)
-    return {"route": route, "route_reason": reason or f"Router chose {route}.", "usage": [record]}
+    return {**cleaned, "route": route, "route_reason": reason or f"Router chose {route}.", "usage": [record]}

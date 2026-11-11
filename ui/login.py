@@ -56,13 +56,14 @@ def load_auth():
         auth = importlib.import_module("smart_campus_assistant.auth")
     except Exception:  # ImportError or an error inside the module
         return None, "The login module (smart_campus_assistant.auth) could not be loaded."
-    loader = getattr(auth, "load_users", None)
+    # count_users is one COUNT query; load_users (older backends, test stubs) reads every account.
+    loader = getattr(auth, "count_users", None) or getattr(auth, "load_users", None)
     if loader is not None:
         try:
             if not loader():
-                return None, "No user accounts exist yet (data/users.json is missing or empty)."
+                return None, "No user accounts exist yet (the accounts database is empty)."
         except Exception:
-            return None, "The users file (data/users.json) could not be read."
+            return None, "The accounts database could not be read."
     return auth, None
 
 
@@ -309,47 +310,37 @@ def _register() -> None:
         st.session_state.pop(k, None)
 
 
-def _rule_hints(auth, key: str) -> None:
-    """Live checklist under the password field (updates when the field changes)."""
-    rules = password_rules(auth)
-    value = str(st.session_state.get(key) or "")
-    if not value:
-        st.caption(rules)
-        return
-    problems = password_problems(auth, value)
-    if problems:
-        st.caption(f"✗ {problems_text(problems)} (Rules: {rules})")
-    else:
-        st.caption("✓ Password meets the rules.")
-
-
 def _render_register(auth) -> None:
     st.markdown('<div class="sca-login-sub">Student registration</div>', unsafe_allow_html=True)
     mode = st.segmented_control("Registration type", REG_MODES, default=REG_MODES[0], key="reg_mode",
                                 required=True, width="stretch", label_visibility="collapsed",
                                 on_change=_on_view_change)
-    if mode == REG_MODES[0]:
-        branches = get_branches()
-        categories = list(getattr(auth, "STUDENT_CATEGORIES", None) or DEFAULT_CATEGORIES)
-        st.text_input("Full name", key="reg_name", autocomplete="name")
-        st.text_input("Email", key="reg_email", placeholder="you@example.com", autocomplete="email")
-        c1, c2 = st.columns(2)
-        c1.selectbox("Branch", list(branches), key="reg_branch", format_func=lambda b: f"{b} · {branches.get(b, b)}")
-        c2.selectbox("Category", categories, key="reg_category")
-        st.radio("Hostel", ["No", "Yes"], key="reg_hostel", horizontal=True, help="Do you want a hostel room?")
-        st.text_input("Password", key="reg_password", type="password", autocomplete="new-password")
-        _rule_hints(auth, "reg_password")
-        st.text_input("Confirm password", key="reg_confirm", type="password", autocomplete="new-password")
-        label = "Create account"
-    else:
-        st.text_input("Student ID", key="claim_sid", placeholder="XYZ24CSE001")
-        st.text_input("College email", key="claim_email", placeholder="name@xyz.edu.example", autocomplete="email")
-        st.text_input("Password", key="claim_password", type="password", autocomplete="new-password")
-        _rule_hints(auth, "claim_password")
-        st.text_input("Confirm password", key="claim_confirm", type="password", autocomplete="new-password")
-        label = "Activate account"
-    st.button(label, type="primary", width="stretch", on_click=_register, icon=":material/person_add:",
-              key="reg_submit")
+    # A form sends every field together on submit. Outside a form a password field is only saved
+    # when it loses focus to another widget, and pressing Tab moves focus to its own "show password"
+    # icon instead, so keyboard users lost what they had typed.
+    with st.form("reg_form", border=False, enter_to_submit=True):
+        if mode == REG_MODES[0]:
+            branches = get_branches()
+            categories = list(getattr(auth, "STUDENT_CATEGORIES", None) or DEFAULT_CATEGORIES)
+            st.text_input("Full name", key="reg_name", autocomplete="name")
+            st.text_input("Email", key="reg_email", placeholder="you@example.com", autocomplete="email")
+            c1, c2 = st.columns(2)
+            c1.selectbox("Branch", list(branches), key="reg_branch", format_func=lambda b: f"{b} · {branches.get(b, b)}")
+            c2.selectbox("Category", categories, key="reg_category")
+            st.radio("Hostel", ["No", "Yes"], key="reg_hostel", horizontal=True, help="Do you want a hostel room?")
+            st.text_input("Password", key="reg_password", type="password", autocomplete="new-password")
+            st.caption(password_rules(auth))
+            st.text_input("Confirm password", key="reg_confirm", type="password", autocomplete="new-password")
+            label = "Create account"
+        else:
+            st.text_input("Student ID", key="claim_sid", placeholder="XYZ24CSE001")
+            st.text_input("College email", key="claim_email", placeholder="name@xyz.edu.example", autocomplete="email")
+            st.text_input("Password", key="claim_password", type="password", autocomplete="new-password")
+            st.caption(password_rules(auth))
+            st.text_input("Confirm password", key="claim_confirm", type="password", autocomplete="new-password")
+            label = "Activate account"
+        st.form_submit_button(label, type="primary", width="stretch", on_click=_register,
+                              icon=":material/person_add:", key="reg_submit")
     error = st.session_state.get("reg_error")
     if error:
         st.error(error, icon=":material/error:")

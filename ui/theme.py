@@ -36,7 +36,8 @@ _CSS = f"""
 }}
 
 /* Page frame */
-[data-testid="stMainBlockContainer"] {{ padding-bottom: 6rem; }}
+/* Streamlit leaves 8rem above the content under the top navigation; 5rem clears the bar. */
+[data-testid="stMainBlockContainer"] {{ padding-top: 5rem; padding-bottom: 6rem; }}
 h1, h2, h3 {{ letter-spacing: -0.02em; }}
 
 /* Hero header */

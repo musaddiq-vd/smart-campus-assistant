@@ -48,6 +48,7 @@ class Settings:
     embedding_model_id: str
     retriever_k: int
     max_research_loops: int
+    research_workers: int  # sub-questions researched at the same time on the deep path (1 = sequential)
     data_dir: Path  # college documents (markdown)
     students_file: Path  # synthetic student records
     users_file: Path  # legacy JSON accounts (imported into db_file once)
@@ -68,6 +69,7 @@ def get_settings() -> Settings:
         embedding_model_id=os.getenv("EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"),
         retriever_k=int(os.getenv("RETRIEVER_K", "5")),
         max_research_loops=int(os.getenv("MAX_RESEARCH_LOOPS", "2")),
+        research_workers=int(os.getenv("RESEARCH_WORKERS", "4")),
         data_dir=PROJECT_ROOT / "data" / "college",
         students_file=PROJECT_ROOT / "data" / "students.json",
         users_file=Path(os.getenv("SCA_USERS_FILE", str(PROJECT_ROOT / "data" / "users.json"))),

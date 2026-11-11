@@ -1,4 +1,8 @@
-"""Page "Cost & Accuracy": eval results for the router vs an always-deep baseline."""
+"""Page "Evaluation" (admin only): eval results for the router vs an always-deep baseline.
+
+Reads ``eval/results/latest.csv`` written by ``python eval/run_eval.py``; shows how to
+create it when no run exists yet.
+"""
 
 from __future__ import annotations
 
@@ -24,6 +28,7 @@ from ui.components import (  # noqa: E402
     format_pct,
     hero_html,
     kpi_card_html,
+    require_role,
     section_header,
 )
 from ui.theme import (  # noqa: E402
@@ -67,7 +72,7 @@ def results_dir() -> Path:
 def _to_bool(series: pd.Series) -> pd.Series:
     if series.dtype == bool:
         return series
-    if pd.api.types.is_numeric_dtype(series):  # e.g. keyword_hit written as 1.0 / 0.0
+    if pd.api.types.is_numeric_dtype(series):  # e.g. a flag written as 1.0 / 0.0
         return series.fillna(0) > 0
     return series.astype(str).str.strip().str.lower().isin(["true", "1", "1.0", "yes", "y"])
 
@@ -78,7 +83,11 @@ def load_results(csv_path: str, summary_path: str, _mtime: float) -> tuple[pd.Da
     for col in ("llm_calls", "input_tokens", "output_tokens", "total_tokens", "cost_usd", "latency_ms", "answer_chars", "citations"):
         if col in df:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-    for col in ("route_correct", "keyword_hit", "fake"):
+    if "keyword_hit" in df:
+        # The eval writes the FRACTION of expected keywords found (0..1). Keep it as a number:
+        # turning it into a yes/no flag would count a 1-of-3 answer as a full hit.
+        df["keyword_hit"] = pd.to_numeric(df["keyword_hit"], errors="coerce").fillna(0).clip(0, 1)
+    for col in ("route_correct", "fake"):
         if col in df:
             df[col] = _to_bool(df[col])
     for col in ("expected_route", "predicted_route"):
@@ -378,7 +387,8 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
             "total_tokens": st.column_config.NumberColumn("Tokens", format="%d"),
             "cost_usd": st.column_config.NumberColumn("Cost", format="$%.6f"),
             "latency_ms": st.column_config.NumberColumn("Latency", format="%.0f ms"),
-            "keyword_hit": st.column_config.CheckboxColumn("Keyword hit"),
+            "keyword_hit": st.column_config.ProgressColumn("Keywords found", min_value=0, max_value=1,
+                                                           format="percent"),
             "citations": st.column_config.NumberColumn("Cites", format="%d"),
             "error": st.column_config.TextColumn("Error"),
         },
@@ -387,6 +397,7 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
 
 
 inject_css()
+require_role("admin")
 path = results_dir()
 csv_path, summary_path = path / "latest.csv", path / "latest_summary.json"
 

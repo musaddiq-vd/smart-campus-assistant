@@ -1,10 +1,9 @@
-langgraph
+langgraph>=1.0
+langchain-core
 langchain-aws
-langchain-community
 langchain-text-splitters
-pypdf
 boto3
 python-dotenv
-streamlit
+streamlit>=1.50
 pandas
 altair

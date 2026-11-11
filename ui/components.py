@@ -512,6 +512,14 @@ def effective_fee_status(fees: Mapping) -> str:
 
 def all_records_safe() -> list[dict]:
     """Full record of every student (admin pages only); empty when the data is missing."""
+    try:
+        from smart_campus_assistant.student_data import all_records  # one pass, not one lookup per student
+
+        return [dict(r) for r in all_records() if r.get("student_id")]
+    except ImportError:  # older backend without all_records: fall back to per-student lookups
+        pass
+    except Exception:  # noqa: BLE001
+        return []
     records = []
     for student in list_students_safe():
         record = get_student_safe(student["student_id"])
@@ -723,7 +731,7 @@ def _attendance_section(record: Mapping) -> None:
     )
     bars = alt.Chart(df).mark_bar(cornerRadiusEnd=4).encode(
         x=alt.X("Attendance (%):Q", scale=alt.Scale(domain=[0, 100]), title=None),
-        y=alt.Y("Course:N", sort=None, title=None, axis=alt.Axis(labelLimit=200)),
+        y=alt.Y("Course:N", sort=None, title=None, axis=alt.Axis(labelLimit=240, labelOverlap=False)),
         color=alt.Color(
             "Status:N",
             scale=alt.Scale(domain=["OK", "Below 75%"], range=[SIMPLE_COLOR, BASELINE_COLOR]),
@@ -736,7 +744,10 @@ def _attendance_section(record: Mapping) -> None:
         .mark_rule(strokeDash=[4, 3], strokeWidth=2, color="#888")
         .encode(x="x:Q")
     )
-    st.altair_chart((bars + rule).properties(height=max(140, 36 * len(df))), width="stretch")
+    # One readable row per course; the left padding stops long course names from being clipped
+    # (Vega measures labels before the web font has loaded).
+    chart = (bars + rule).properties(height=max(140, 34 * len(df) + 70), padding={"left": 36, "right": 8, "top": 4, "bottom": 4})
+    st.altair_chart(chart, width="stretch")
 
 
 def _exams_section(record: Mapping) -> None:

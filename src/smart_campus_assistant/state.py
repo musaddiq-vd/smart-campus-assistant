@@ -9,9 +9,9 @@ from langchain_core.documents import Document
 
 
 class Citation(TypedDict):
-    source: str  # relative path, e.g. "iit_bombay/fee_new_entrants_2026.pdf"
-    college: str  # folder key, e.g. "iit_bombay"
-    page: Optional[int]  # 1-based page number
+    source: str  # document file name, e.g. "fee_structure.md"
+    college: str  # college key, e.g. "xyz"
+    page: Optional[int]  # 1-based section number within the document
     snippet: str  # short quote from the chunk
 
 

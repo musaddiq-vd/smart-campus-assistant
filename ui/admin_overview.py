@@ -102,7 +102,7 @@ left, right = st.columns([1, 1], gap="large")
 with left:
     section_header("Outstanding fees by branch", "Unpaid amount this semester, split by overdue vs not yet due")
     fee_rows = []
-    for r, f in zip(records, flags):
+    for r, f in zip(records, flags, strict=True):
         if f["fees_due"]:
             kind = "Overdue" if f["fee_status"] == "overdue" else "Not yet due"
             fee_rows.append({"Branch": r.get("branch") or "?", "Status": kind, "Outstanding (₹)": f["fees_due"]})
@@ -124,8 +124,8 @@ with right:
     section_header("Students by branch")
     branch_df = pd.DataFrame(
         [{"Branch": b, "Students": by_branch[b],
-          "Low attendance": sum(1 for r, f in zip(records, flags) if r.get("branch") == b and f["low_attendance"]),
-          "Fees overdue": sum(1 for r, f in zip(records, flags) if r.get("branch") == b and f["fee_status"] == "overdue")}
+          "Low attendance": sum(1 for r, f in zip(records, flags, strict=True) if r.get("branch") == b and f["low_attendance"]),
+          "Fees overdue": sum(1 for r, f in zip(records, flags, strict=True) if r.get("branch") == b and f["fee_status"] == "overdue")}
          for b in branches]
     )
     st.dataframe(branch_df, hide_index=True, width="stretch")

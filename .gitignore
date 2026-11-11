@@ -22,3 +22,8 @@ data/raw/**/*.pdf
 # Outputs
 eval/results/
 .langgraph_api/
+
+# Local tooling
+.claude/
+.ruff_cache/
+.pytest_cache/

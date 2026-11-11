@@ -50,6 +50,18 @@ def account_emails(auth) -> dict[str, str] | None:
     return out
 
 
+def account_email(auth, student_id: str) -> tuple[bool, str | None]:
+    """(accounts readable?, sign-in email of this student or None)."""
+    lookup = getattr(auth, "account_email_for_student", None) if auth is not None else None
+    if callable(lookup):  # one row instead of every account
+        try:
+            return True, lookup(student_id)
+        except Exception:  # noqa: BLE001
+            return False, None
+    emails = account_emails(auth)
+    return (False, None) if emails is None else (True, emails.get(student_id))
+
+
 def _ask_reset(student_id: str) -> None:
     st.session_state["reset_confirm"] = student_id
     st.session_state.pop("reset_result", None)
@@ -79,12 +91,11 @@ def render_account_box(record: dict) -> None:
     """Account status and the admin "Reset password" flow for one student."""
     sid = str(record.get("student_id") or "").upper()
     auth, _ = load_auth()
-    emails = account_emails(auth)
+    readable, email = account_email(auth, sid)
     section_header("Account")
-    if emails is None:
+    if not readable:
         st.caption("Account status is not available right now.")
         return
-    email = emails.get(sid)
     if not email:
         st.caption("No account yet. The student has not registered.")
         return

@@ -1,8 +1,10 @@
 """Offline fake mode for tests, ``eval --fake`` and the UI demo mode.
 
-``enable_fake_mode()`` patches ``models.get_chat_model`` with a deterministic fake chat
-model and ``retriever.search`` / ``format_docs`` / ``to_citation`` with a small in-memory
-document set for XYZ College of Engineering. ``disable_fake_mode()`` restores the originals.
+``enable_fake_mode()`` patches ``models.get_chat_model`` with a deterministic, extractive
+fake chat model and ``retriever.search`` / ``format_docs`` / ``to_citation`` /
+``get_vector_store`` with offline versions. Search runs over the real college documents
+and notices (see ``local_search.py``); the small built-in ``FAKE_DOCS`` set is only a
+fallback for when those files are missing. ``disable_fake_mode()`` restores the originals.
 No AWS calls are made.
 
 Student records are NOT faked: the real local ``data/students.json`` is synthetic and offline.
@@ -24,7 +26,7 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
 from smart_campus_assistant import models, student_data
-from smart_campus_assistant.config import BRANCHES, COLLEGE_KEY, COLLEGE_NAME, COLLEGES
+from smart_campus_assistant.config import COLLEGE_KEY, COLLEGES
 from smart_campus_assistant.state import Citation
 
 RETRIEVER_MODULE = "smart_campus_assistant.retriever"
@@ -103,7 +105,19 @@ def _branch_hits(text: str) -> list[str]:
 
 
 def fake_search(query: str, k: int | None = None, college: str | None = None) -> list[Document]:
-    """Keyword-overlap search over FAKE_DOCS (``college`` is accepted for API parity)."""
+    """Offline search: the real documents and notices when present, else the built-in FAKE_DOCS."""
+    try:
+        from smart_campus_assistant import local_search
+
+        if local_search.chunk_count():
+            return local_search.search(query, k=k, college=college)
+    except Exception:  # noqa: BLE001  (a broken data folder must not break the demo)
+        pass
+    return builtin_search(query, k=k, college=college)
+
+
+def builtin_search(query: str, k: int | None = None, college: str | None = None) -> list[Document]:
+    """Keyword-overlap search over FAKE_DOCS; documents that share no word with the query are left out."""
     k = k or 3
     pool = [d for d in FAKE_DOCS if college is None or d.metadata["college"] == college]
     q = _tokens(query)
@@ -118,8 +132,29 @@ def fake_search(query: str, k: int | None = None, college: str | None = None) ->
         s += 2 * len(branches & _tokens(doc.page_content))
         return s
 
-    ranked = sorted(pool, key=score, reverse=True)
-    return ranked[:k]
+    ranked = sorted(((score(d), i, d) for i, d in enumerate(pool)), key=lambda row: (-row[0], row[1]))
+    return [d for s, _, d in ranked if s > 0][:k]
+
+
+class OfflineVectorStore:
+    """Stand-in for the vector store in fake mode.
+
+    Offline search reads the documents and ``notices.json`` directly, so adding or deleting
+    chunks needs no work here: a saved notice is searchable at once and a deleted one is gone.
+    """
+
+    def add_documents(self, documents: list[Document], ids: list[str] | None = None, **kwargs: Any) -> list[str]:
+        return list(ids or [d.id or "" for d in documents])
+
+    def delete(self, ids: list[str] | None = None, **kwargs: Any) -> bool:
+        return True
+
+    def similarity_search(self, query: str, k: int = 4, **kwargs: Any) -> list[Document]:
+        return fake_search(query, k=k)
+
+
+def fake_get_vector_store() -> OfflineVectorStore:
+    return OfflineVectorStore()
 
 
 def fake_format_docs(docs: list[Document]) -> str:
@@ -195,14 +230,80 @@ def _field(text: str, label: str) -> str:
     return m.group(1).strip() if m else ""
 
 
-def _context_facts(text: str, limit: int = 2) -> list[tuple[int, str]]:
-    """First sentences of the first numbered context blocks: [(n, sentence)]."""
-    facts = []
-    for m in re.finditer(r"^\[(\d+)\] \(.*?\)\n(.+)$", text, flags=re.MULTILINE):
-        facts.append((int(m.group(1)), m.group(2).split(". ")[0].rstrip(".")))
-        if len(facts) >= limit:
-            break
-    return facts
+_BLOCK_RE = re.compile(r"^\[(\d+)\] \((.*?)\)\n(.*?)(?=^\[\d+\] \(|\Z)", flags=re.MULTILINE | re.DOTALL)
+_TABLE_RULE_RE = re.compile(r"^\|?[\s:|-]+\|?$")
+
+
+def _table_cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def _block_statements(body: str) -> tuple[str, list[str]]:
+    """(heading path, statements) of one context block.
+
+    Chunks from the real documents start with their heading path on the first line. A table row
+    becomes "Row label - Column: value; ..." so a single row still reads as a fact; prose is
+    split into sentences.
+    """
+    lines = [ln.strip() for ln in body.strip().splitlines() if ln.strip()]
+    if not lines:
+        return "", []
+    heading = lines[0] if len(lines) > 1 else ""
+    statements: list[str] = []
+    header: list[str] | None = None
+    previous_row: list[str] | None = None
+    for line in lines[1:] if heading else lines:
+        if line.startswith("|"):
+            if _TABLE_RULE_RE.match(line):
+                header = previous_row
+                if header is not None and statements and statements[-1] == " | ".join(c for c in header if c):
+                    statements.pop()  # that row was the header, not a fact
+                continue
+            cells = _table_cells(line)
+            if header and len(header) == len(cells) and len(cells) > 1:
+                pairs = "; ".join(f"{h}: {c}" for h, c in zip(header[1:], cells[1:], strict=True))
+                statements.append(f"{cells[0]} - {pairs}")
+            else:  # no header in this chunk (it was cut off by chunking)
+                statements.append(" | ".join(c for c in cells if c))
+            previous_row = cells
+            continue
+        header = previous_row = None
+        text = re.sub(r"^[-*]\s+", "", line)
+        statements.extend(p.strip() for p in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9(])", text) if p.strip())
+    # Notice chunks carry a "Category: ... For: ..." line that is metadata, not a fact.
+    return heading, [st for st in statements if len(st) > 3 and not st.startswith(("Category:", "For:"))]
+
+
+def _context_facts(
+    text: str, limit: int = 2, question: str = "", fallback: bool = True, min_hits: int = 1
+) -> list[tuple[int, str]]:
+    """The statements of the numbered context blocks that best match the question: [(n, statement)].
+
+    When nothing matches, the first statement of each block is used (or nothing with ``fallback=False``).
+    """
+    from smart_campus_assistant.local_search import tokenize
+
+    wanted = set(tokenize(question))
+    scored: list[tuple[float, int, int, str]] = []
+    firsts: list[tuple[int, str]] = []
+    for m in _BLOCK_RE.finditer(text):
+        n = int(m.group(1))
+        heading, statements = _block_statements(m.group(3))
+        if not statements:
+            continue
+        firsts.append((n, statements[0].rstrip(".")))
+        heading_hits = len(wanted & set(tokenize(heading)))
+        for pos, statement in enumerate(statements):
+            hits = len(wanted & set(tokenize(statement)))
+            if hits >= min_hits:
+                # Body matches count most; the heading and an earlier block break ties.
+                scored.append((hits + 0.5 * heading_hits - 0.01 * n, n, pos, statement.rstrip(".")))
+    if not scored:
+        return firsts[:limit] if fallback else []
+    scored.sort(key=lambda row: (-row[0], row[1], row[2]))
+    best = scored[0][0]
+    picked = [(n, st) for score, n, _, st in scored if score >= 0.6 * best][:limit]
+    return sorted(picked, key=lambda fact: fact[0])
 
 
 # Question words -> record line prefix used by student_data.student_context.
@@ -226,6 +327,37 @@ def _record_line(question: str, record_text: str) -> str:
             detail = lines[i + 1].strip() if i + 1 < len(lines) and lines[i + 1].startswith("  ") else ""
             return f"{line.rstrip(':')}{'; ' + detail.lstrip('- ') if detail else ''}"
     return lines[0] if lines else "(empty record)"
+
+
+# Words that link the parts of a comparison; dropped to leave the topic ("placements", "fees").
+_COMPARE_WORDS = re.compile(
+    r"\b(compare|comparison|between|versus|vs\.?|and|aur|or|ya|which|branch|branches|is|are|better|best|the|of|"
+    r"for|in|what|how|do|does)\b",
+    flags=re.IGNORECASE,
+)
+_PART_SPLIT = re.compile(r"\s*(?:,|;|\?|\band\b|\baur\b|\bincluding\b|\bplus\b)\s*", flags=re.IGNORECASE)
+
+
+def _is_personal(question: str) -> bool:
+    from smart_campus_assistant.router import is_personal  # avoid an import cycle at load time
+
+    return is_personal(question)
+
+
+def _plan_for(question: str) -> list[str]:
+    """Sub-questions for the offline planner: one per named branch, else one per part of the question."""
+    from smart_campus_assistant.simple_rag import BRANCH_ALIASES
+
+    codes = _branch_hits(question)
+    if len(codes) >= 2:
+        topic = question
+        for aliases in BRANCH_ALIASES.values():
+            for alias in aliases:
+                topic = re.sub(rf"\b{re.escape(alias)}\b", " ", topic, flags=re.IGNORECASE)
+        topic = " ".join(_COMPARE_WORDS.sub(" ", topic).replace("?", " ").split()) or "details"
+        return [f"{code} {topic}" for code in codes[:4]]
+    parts = [part.strip() for part in _PART_SPLIT.split(question) if len(part.strip()) > 12]
+    return [f"{part}?" for part in parts[:4]] if len(parts) >= 2 else []
 
 
 class FakeCampusChatModel(BaseChatModel):
@@ -258,28 +390,22 @@ class FakeCampusChatModel(BaseChatModel):
             questions = re.findall(r"^Question:\s*(.+)$", human, flags=re.MULTILINE)
             return json.dumps(_heuristic_route(questions[-1] if questions else human))
         if task == "plan":
-            question = _field(human, "Question")
-            codes = _branch_hits(question) or ["CSE", "ECE"]
-            plan = []
-            for code in codes[:2]:
-                plan.append(f"What are the fees for {code} ({BRANCHES[code]}) at {COLLEGE_NAME}?")
-                plan.append(f"What are the {code} placement figures?")
-            if len(plan) < 3:
-                plan.append("Which scholarships can reduce the fees?")
-            return json.dumps(plan[:5])
+            return json.dumps(_plan_for(_field(human, "Question")))
         if task == "gap":
             return "none"
         if task == "personal":
             question = human.rsplit("Question:", 1)[-1].strip()
             record_text = human.split("Your record:", 1)[-1].split("College documents:", 1)[0].strip()
-            facts = _context_facts(human.split("College documents:", 1)[-1], limit=1)
+            docs_text = human.split("College documents:", 1)[-1].rsplit("Question:", 1)[0]
+            # A policy sentence is quoted only when it clearly matches (two topic words), else none at all.
+            facts = _context_facts(docs_text, limit=1, question=question, fallback=False, min_hits=2)
             answer = f"As per your record: {_record_line(question, record_text)}."
             if facts:
                 n, fact = facts[0]
                 answer += f" College rule: {fact} [{n}]."
             return answer
-        facts = _context_facts(human)
         if task == "note":
+            facts = _context_facts(human.split("Context:", 1)[-1], limit=3, question=_field(human, "Sub-question"))
             if not facts:
                 return "Not found in the provided documents."
             return "\n".join(f"- {fact} [{n}]" for n, fact in facts)
@@ -289,7 +415,8 @@ class FakeCampusChatModel(BaseChatModel):
                 line for line in notes.splitlines() if line.startswith("- ") and re.search(r"\[\d+\]", line)
             ))
             record_note = ""
-            if "Your record" in human:
+            # The student's record is added only when the question is about the student.
+            if "Your record" in human and _is_personal(_field(human, "Question")):
                 record_text = human.split("own data):", 1)[-1].split("Research notes:", 1)[0].strip()
                 record_note = f"\n\n**Your record:** {_record_line(_field(human, 'Question'), record_text)}."
             if not bullets:
@@ -298,13 +425,17 @@ class FakeCampusChatModel(BaseChatModel):
                 "**Short answer:** here is what the college documents say.\n\n"
                 + "\n".join(bullets[:6])
                 + record_note
-                + "\n\n**Bottom line:** compare the cited fee and placement figures before you decide."
+                + "\n\n**Bottom line:** these points are quoted from the cited college documents; open the sources below for the full text."
             )
         # task == "answer" (simple path)
+        question = human.rsplit("Question:", 1)[-1].split("\n\nAnswer format", 1)[0].strip()
+        facts = _context_facts(human.split("Context:", 1)[-1].rsplit("Question:", 1)[0], question=question)
         if not facts:
             return "The college documents provided do not contain this information."
-        n, fact = facts[0]
-        return f"According to the college documents: {fact} [{n}]."
+        if len(facts) == 1:
+            n, fact = facts[0]
+            return f"According to the college documents: {fact} [{n}]."
+        return "According to the college documents:\n" + "\n".join(f"- {fact} [{n}]" for n, fact in facts)
 
 
 # ---------------------------------------------------------------- enable / disable
@@ -320,8 +451,8 @@ def fake_get_chat_model(role: str = "answer") -> BaseChatModel:
 def _with_demo_fallback(original):
     """Wrap load_students: real (synthetic) JSON first, built-in demo students only if it is empty."""
 
-    def load_students(path=None):
-        return original(path) or demo_students()
+    def load_students(path=None, db_path=None):
+        return original(path, db_path) or demo_students()
 
     load_students.__wrapped__ = original  # type: ignore[attr-defined]
     return load_students
@@ -342,6 +473,14 @@ def _retriever_module() -> types.ModuleType:
         return stub
 
 
+_RETRIEVER_FAKES = (
+    ("search", fake_search),
+    ("format_docs", fake_format_docs),
+    ("to_citation", fake_to_citation),
+    ("get_vector_store", fake_get_vector_store),
+)
+
+
 def is_fake_mode() -> bool:
     return bool(_ORIGINALS)
 
@@ -354,7 +493,7 @@ def enable_fake_mode() -> None:
     retriever = _retriever_module()
     _ORIGINALS["models.get_chat_model"] = models.get_chat_model
     models.get_chat_model = fake_get_chat_model  # type: ignore[assignment]
-    for name, fake in (("search", fake_search), ("format_docs", fake_format_docs), ("to_citation", fake_to_citation)):
+    for name, fake in _RETRIEVER_FAKES:
         _ORIGINALS[f"retriever.{name}"] = getattr(retriever, name, None)
         setattr(retriever, name, fake)
     _ORIGINALS["student_data.load_students"] = student_data.load_students
@@ -369,7 +508,7 @@ def disable_fake_mode() -> None:
     models.get_chat_model = _ORIGINALS.pop("models.get_chat_model")  # type: ignore[assignment]
     student_data.load_students = _ORIGINALS.pop("student_data.load_students")  # type: ignore[assignment]
     retriever = sys.modules.get(RETRIEVER_MODULE)
-    for name in ("search", "format_docs", "to_citation"):
+    for name, _ in _RETRIEVER_FAKES:
         original = _ORIGINALS.pop(f"retriever.{name}", None)
         if retriever is None:
             continue

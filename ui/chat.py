@@ -44,6 +44,8 @@ STUDENT_EXAMPLES = [
     "Is my attendance enough to sit the exams?",
 ]
 
+MAX_QUESTION_CHARS = 2000  # same limit as router.MAX_QUESTION_CHARS
+
 # Label of the pill shown while the next node is still running.
 NEXT_STEP = {
     "router": {
@@ -305,6 +307,9 @@ def render_empty_state(user: dict) -> None:
 # ---------- page ----------
 
 inject_css(max_width="58rem")
+# The chat input is pinned to the bottom and Streamlit scrolls a chat page to its end, so spare
+# bottom padding only pushes the page header out of view.
+st.html('<style>[data-testid="stMainBlockContainer"] { padding-bottom: 1rem; }</style>')
 user = require_role("student", "admin")
 is_admin = user["role"] == "admin"
 st.session_state.setdefault("messages", [])
@@ -353,7 +358,8 @@ for msg in st.session_state.messages:
         else:
             render_result(msg["result"], is_admin)
 
-typed = st.chat_input("Ask about the college…" if is_admin else "Ask about exams, fees, your books…")
+typed = st.chat_input("Ask about the college…" if is_admin else "Ask about exams, fees, your books…",
+                      max_chars=MAX_QUESTION_CHARS)
 question = typed or st.session_state.pop("pending_question", None)
 
 # A question left without an answer means its run was stopped (e.g. the page changed

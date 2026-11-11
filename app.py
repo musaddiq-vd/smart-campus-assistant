@@ -2,7 +2,7 @@
 
 - Signed out: only the sign-in page exists (no sidebar).
 - Student: "Ask" (chat about the college and their own record), "My dashboard" and "Account".
-- Admin: "Overview", "Students", "Notices" (if present), "Ask" (college questions only) and "Account".
+- Admin: "Overview", "Students", "Notices", "Evaluation", "Ask" (college questions only) and "Account".
 
 Identity comes only from ``st.session_state["user"]``, which is set by the sign-in form or,
 after a page refresh, by a valid server-side session behind the ``sca_session`` cookie.
@@ -137,6 +137,9 @@ def pages_for(user: dict) -> list:
         # Registered only when the page file exists, so a missing file never crashes the app.
         if (ROOT / "ui" / "admin_notices.py").exists():
             pages.append(st.Page("ui/admin_notices.py", title="Notices", icon=":material/campaign:", url_path="notices"))
+        if (ROOT / "ui" / "admin_evaluation.py").exists():
+            pages.append(st.Page("ui/admin_evaluation.py", title="Evaluation", icon=":material/monitoring:",
+                                 url_path="evaluation"))
         pages.append(st.Page("ui/chat.py", title="Ask", icon=":material/forum:", url_path="ask"))
         pages.append(account_page(default=must_change))
         return pages

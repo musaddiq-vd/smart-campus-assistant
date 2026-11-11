@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 import re
-from functools import lru_cache
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 
 from smart_campus_assistant.config import BRANCHES, get_settings
@@ -156,6 +156,14 @@ def list_students(db_path: str | Path | None = None) -> list[dict]:
         {"student_id": sid, "name": r.get("name", ""), "branch": r.get("branch", ""), "year": r.get("year")}
         for sid, r in sorted(_all(db_path).items())
     ]
+
+
+def all_records(db_path: str | Path | None = None) -> list[dict]:
+    """Full record of every student, sorted by ID, read in ONE pass (admin pages only).
+
+    Looking students up one by one would re-read the database for each of them.
+    """
+    return [dict(record) for _, record in sorted(_all(db_path).items())]
 
 
 # ---------------------------------------------------------------- new admissions (self-registration)

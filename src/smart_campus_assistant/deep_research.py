@@ -2,17 +2,25 @@
 
 LLM calls are bounded: 1 plan + (1 note per sub-question + 1 gap check) per loop + 1 report,
 with at most MAX_SUB_QUESTIONS sub-questions in total.
+
+The sub-questions of one loop are independent, so they are researched concurrently
+(``RESEARCH_WORKERS`` threads); results are kept in plan order, so the output is the same
+as a sequential run, only faster.
 """
 
 from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
+
+from langchain_core.documents import Document
 
 from smart_campus_assistant import prompts, student_data
 from smart_campus_assistant.config import get_settings
+from smart_campus_assistant.personal import branch_scoped_query
 from smart_campus_assistant.simple_rag import call_llm
-from smart_campus_assistant.state import AgentState, Citation, Note
+from smart_campus_assistant.state import AgentState, Citation, Note, UsageRecord
 
 MAX_PLAN = 5  # plan size: the question itself + up to 4 planner sub-questions
 MAX_GAP_QUESTIONS = 2
@@ -110,30 +118,42 @@ def plan_research(state: AgentState) -> dict:
     return {"plan": plan, "research_loops": 0, "usage": [record]}
 
 
-def research(state: AgentState) -> dict:
-    """Research every pending sub-question, then (if loops remain) check for gaps."""
+def _research_one(question: str, sub_q: str, own_record: dict | None) -> tuple[Note, list[Document], UsageRecord]:
+    """Search and write the evidence note for ONE sub-question (safe to run in a worker thread)."""
     from smart_campus_assistant import retriever  # lazy: lets fake mode stub the module
 
-    from smart_campus_assistant.personal import branch_scoped_query
+    docs = retriever.search(branch_scoped_query(sub_q, own_record))  # one college: no filter needed
+    summary, record = call_llm(
+        "answer", "researcher", prompts.note_messages(question, sub_q, retriever.format_docs(docs))
+    )
+    cited = [n for n in _cited_numbers(summary) if 1 <= n <= len(docs)]
+    used = [docs[n - 1] for n in cited] if cited else docs
+    # Note citations are renumbered locally to match their order in the list.
+    summary = _renumber(summary, {n: i + 1 for i, n in enumerate(cited)}) if cited else summary
+    note = Note(sub_question=sub_q, summary=summary, citations=[retriever.to_citation(d) for d in used])
+    return note, used, record
 
+
+def research(state: AgentState) -> dict:
+    """Research every pending sub-question (concurrently), then (if loops remain) check for gaps."""
     question = state["question"]
     loops_done = state.get("research_loops", 0)
     records, notes, all_docs = [], [], list(state.get("docs") or [])
     # A signed-in student's own branch keeps sub-questions like "Semester 5 subjects" on their branch.
     own_record = student_data.get_student(state["student_id"]) if state.get("student_id") else None
 
-    for sub_q in _pending(state):
-        docs = retriever.search(branch_scoped_query(sub_q, own_record))  # one college: no filter needed
-        summary, record = call_llm(
-            "answer", "researcher", prompts.note_messages(question, sub_q, retriever.format_docs(docs))
-        )
-        records.append(record)
-        cited = [n for n in _cited_numbers(summary) if 1 <= n <= len(docs)]
-        used = [docs[n - 1] for n in cited] if cited else docs
-        # Note citations are renumbered locally to match their order in the list.
-        summary = _renumber(summary, {n: i + 1 for i, n in enumerate(cited)}) if cited else summary
-        notes.append(Note(sub_question=sub_q, summary=summary, citations=[retriever.to_citation(d) for d in used]))
+    pending = _pending(state)
+    workers = min(max(1, get_settings().research_workers), len(pending))
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="research") as pool:
+            # map() yields in plan order, whatever order the calls finish in.
+            results = list(pool.map(lambda sub_q: _research_one(question, sub_q, own_record), pending))
+    else:
+        results = [_research_one(question, sub_q, own_record) for sub_q in pending]
+    for note, used, record in results:
+        notes.append(note)
         all_docs.extend(used)
+        records.append(record)
 
     update: dict = {"notes": notes, "research_loops": loops_done + 1, "docs": all_docs, "usage": records}
 

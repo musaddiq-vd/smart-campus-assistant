@@ -194,6 +194,22 @@ def load_users(path: str | Path | None = None) -> dict[str, dict]:
     return {row["email"]: _record(row) for row in rows}
 
 
+def count_users(path: str | Path | None = None) -> int:
+    """Number of accounts (one COUNT query; no password hashes leave the database)."""
+    with db.reading(path) as conn:
+        return int(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0])
+
+
+def account_email_for_student(student_id: object, path: str | Path | None = None) -> str | None:
+    """Sign-in email of the account that belongs to a student ID, or None if they have no account."""
+    sid = student_data.normalize_id(student_id)
+    if not sid:
+        return None
+    with db.reading(path) as conn:
+        row = conn.execute("SELECT email FROM users WHERE student_id = ? AND role = 'student'", (sid,)).fetchone()
+    return row["email"] if row else None
+
+
 def save_users(records: dict[str, dict], path: str | Path | None = None) -> None:
     """Compatibility helper: make the users table equal to ``records`` (upsert; delete the rest).
 
@@ -702,12 +718,12 @@ def ensure_hosted_demo_users(path: str | Path | None = None) -> int:
     written. Returns the number of accounts created (0 if skipped).
     """
     password = os.getenv("SCA_DEMO_PASSWORD") or ""
-    if not password or load_users(path):
+    if not password or count_users(path):
         return 0
     problems = validate_new_password(password)
     if problems:
         # The app swallows bootstrap errors, so leave a clear hint in the server log.
-        logging.getLogger(__name__).warning(
+        log.warning(
             "SCA_DEMO_PASSWORD is not usable (%s); demo accounts were not created.", "; ".join(problems)
         )
         return 0

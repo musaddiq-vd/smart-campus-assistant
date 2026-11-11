@@ -3,6 +3,7 @@
 START -> router -> simple_answer -> END
                 -> personal_answer -> END
                 -> planner -> researcher* -> writer -> END
+                -> END (blank question: the router already answered)
 
 Node names ("router", "simple_answer", "personal_answer", "planner", "researcher", "writer")
 are a contract used by the UI to show live progress.
@@ -32,6 +33,8 @@ class GraphContext(TypedDict, total=False):
 
 
 def _pick_path(state: AgentState) -> str:
+    if state.get("answer"):  # the router answered a blank question itself
+        return END
     route = state.get("route")
     if route == "simple":
         return "simple_answer"
@@ -50,7 +53,7 @@ def build_graph():
     builder.add_node("writer", write_report)
 
     builder.add_edge(START, "router")
-    builder.add_conditional_edges("router", _pick_path, ["simple_answer", "personal_answer", "planner"])
+    builder.add_conditional_edges("router", _pick_path, ["simple_answer", "personal_answer", "planner", END])
     builder.add_edge("simple_answer", END)
     builder.add_edge("personal_answer", END)
     builder.add_edge("planner", "researcher")
