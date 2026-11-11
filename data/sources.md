@@ -6,7 +6,7 @@ The data is "as of" 2026-11-03 (Odd semester 2026-27, before the end-semester ex
 
 ## College documents (`data/college/*.md`)
 
-Ingested by `python -m smart_campus_assistant.ingest` into the S3 Vectors index `xyz-college-docs`.
+Ingested by `python -m smart_campus_assistant.ingest` into the S3 Vectors index `xyz-college-docs`. In demo mode the same chunks are searched offline by `local_search.py` (BM25), so no ingest is needed.
 
 | File | doc_type | Content |
 |---|---|---|
