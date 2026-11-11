@@ -8,7 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from smart_campus_assistant import deep_research, fakes, graph as graph_module, models, router
+from smart_campus_assistant import deep_research, fakes, models, router
+from smart_campus_assistant import graph as graph_module
 
 
 @pytest.fixture
@@ -19,7 +20,7 @@ def fake_mode():
 
 
 def _set_max_loops(monkeypatch, n: int) -> None:
-    monkeypatch.setattr(deep_research, "get_settings", lambda: SimpleNamespace(max_research_loops=n))
+    monkeypatch.setattr(deep_research, "get_settings", lambda: SimpleNamespace(max_research_loops=n, research_workers=4))
 
 
 # ---------------------------------------------------------------- router

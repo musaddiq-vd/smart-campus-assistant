@@ -8,7 +8,8 @@ import json
 import pytest
 from langchain_core.messages import BaseMessage
 
-from smart_campus_assistant import fakes, graph as graph_module, models, personal, student_data
+from smart_campus_assistant import fakes, models, personal, student_data
+from smart_campus_assistant import graph as graph_module
 
 
 def _student(sid, name, branch, **over):

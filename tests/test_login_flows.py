@@ -131,13 +131,15 @@ def test_register_new_admission_signs_in_and_shows_new_id(flows):
     no_secrets(at, GOOD)
 
 
-def test_register_live_rule_hints(flows):
+def test_register_shows_rules_and_names_the_broken_ones(flows):
+    """The fields live in a form (so Tab never loses a typed password): rules up front, problems on submit."""
     at = view(start(), "Register")
     assert "At least 8 characters · At least one digit" in all_text(at)
-    at.text_input(key="reg_password").input("short").run()
-    assert "✗ It needs: at least 8 characters" in all_text(at)
-    at.text_input(key="reg_password").input(GOOD).run()
-    assert "meets the rules" in all_text(at)
+    register_new(at, "short")
+    text = all_text(at)
+    assert "too weak" in text and "at least 8 characters" in text
+    assert at.session_state["reg_password"] == "" and at.session_state["reg_confirm"] == ""
+    assert "user" not in at.session_state
 
 
 @pytest.mark.parametrize(("password", "confirm", "message"), [

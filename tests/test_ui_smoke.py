@@ -119,7 +119,7 @@ def make_auth_module(max_failures: int = 3) -> types.ModuleType:
 
 
 ADMIN_NOTICES = (ROOT / "ui" / "admin_notices.py").exists()
-ADMIN_PAGES = ["Overview", "Students", *(["Notices"] if ADMIN_NOTICES else []), "Ask", "Account"]
+ADMIN_PAGES = ["Overview", "Students", *(["Notices"] if ADMIN_NOTICES else []), "Evaluation", "Ask", "Account"]
 STUDENT_PAGES = ["Ask", "My dashboard", "Account"]
 
 
