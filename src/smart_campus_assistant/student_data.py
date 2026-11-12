@@ -110,17 +110,54 @@ def _merge(json_students: dict[str, dict], db_students: dict[str, dict]) -> dict
     return merged
 
 
+def load_record_overrides(db_path: str | Path | None = None) -> dict[str, dict]:
+    """Edited records saved by ``record_updates`` ({} when there is no database or no edit yet): one query."""
+    from smart_campus_assistant import db
+
+    try:
+        if not db.db_path(db_path).exists():
+            return {}
+        with db.reading(db_path) as c:
+            rows = c.execute("SELECT record_json FROM student_record_overrides").fetchall()
+    except Exception:  # noqa: BLE001  (the table is created on the first edit; a broken database must not break reads)
+        return {}
+    overrides: dict[str, dict] = {}
+    for row in rows:
+        try:
+            record = json.loads(row["record_json"])
+        except (TypeError, ValueError):
+            continue
+        if isinstance(record, dict) and record.get("student_id"):
+            overrides[normalize_id(record["student_id"])] = record
+    return overrides
+
+
+def _apply_overrides(students: dict[str, dict], overrides: dict[str, dict]) -> dict[str, dict]:
+    """An edited record replaces the JSON / database record of a known student; ``as_of`` stays the file's date."""
+    known = {sid: r for sid, r in overrides.items() if sid in students}
+    if not known:
+        return students
+    merged = dict(students)
+    for sid, record in known.items():
+        record = dict(record)
+        record["as_of"] = students[sid].get("as_of")
+        merged[sid] = record
+    return merged
+
+
 def load_students(path: str | Path | None = None, db_path: str | Path | None = None) -> dict[str, dict]:
     """Return {STUDENT_ID: record}; empty dict if the file is missing or invalid.
 
     Each record gets an ``as_of`` key copied from the file (used for "days left").
     Self-registered students from the database are included (same schema; JSON wins on an
     id clash) when ``db_path`` is given or when the configured students file is used.
+    Under the same rule, a record edited through ``record_updates`` wins over both.
     """
     students = _load_json_students(path)
     if db_path is None and not _uses_app_db(path):
         return students
-    return _merge(students, load_db_students(db_path))
+    merged = _merge(students, load_db_students(db_path))
+    return _apply_overrides(merged, load_record_overrides(db_path))
 
 
 def _all(db_path: str | Path | None) -> dict[str, dict]:
