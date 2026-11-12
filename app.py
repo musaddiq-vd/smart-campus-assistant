@@ -1,8 +1,10 @@
 """Streamlit entry point: sign-in gate, then role-based navigation.
 
 - Signed out: only the sign-in page exists (no sidebar).
-- Student: "Ask" (chat about the college and their own record), "My dashboard" and "Account".
-- Admin: "Overview", "Students", "Notices", "Evaluation", "Ask" (college questions only) and "Account".
+- Student: "Ask" (chat about the college and their own record), "My dashboard", "Pay fees",
+  "My requests" and "Account".
+- Admin: "Overview", "Students", "Requests", "Notices", "Insights", "Ask" (college questions only)
+  and "Account".
 
 Identity comes only from ``st.session_state["user"]``, which is set by the sign-in form or,
 after a page refresh, by a valid server-side session behind the ``sca_session`` cookie.
@@ -125,27 +127,41 @@ def account_page(default: bool = False):
                    default=default)
 
 
+# (page file, title, icon, url path) in menu order. "Ask" and "Account" are added by pages_for.
+ADMIN_PAGES = [
+    ("ui/admin_overview.py", "Overview", ":material/insights:", "overview"),
+    ("ui/admin_students.py", "Students", ":material/group:", "students"),
+    ("ui/admin_requests.py", "Requests", ":material/support_agent:", "requests"),
+    ("ui/admin_notices.py", "Notices", ":material/campaign:", "notices"),
+    ("ui/admin_insights.py", "Insights", ":material/query_stats:", "insights"),
+]
+STUDENT_PAGES = [
+    ("ui/student_home.py", "My dashboard", ":material/dashboard:", "my-dashboard"),
+    ("ui/student_payments.py", "Pay fees", ":material/payments:", "pay-fees"),
+    ("ui/student_requests.py", "My requests", ":material/support_agent:", "my-requests"),
+]
+
+
+def _pages(specs: list[tuple[str, str, str, str]], default_title: str | None = None) -> list:
+    """Pages whose file exists (a missing file never crashes the app)."""
+    return [
+        st.Page(file, title=title, icon=icon, url_path=url_path, default=title == default_title)
+        for file, title, icon, url_path in specs
+        if (ROOT / file).exists()
+    ]
+
+
 def pages_for(user: dict) -> list:
     # A user signed in with a temporary password lands on Account until it is changed.
     must_change = bool(user.get("must_change_password"))
     if user["role"] == "admin":
-        pages = [
-            st.Page("ui/admin_overview.py", title="Overview", icon=":material/insights:", url_path="overview",
-                    default=not must_change),
-            st.Page("ui/admin_students.py", title="Students", icon=":material/group:", url_path="students"),
-        ]
-        # Registered only when the page file exists, so a missing file never crashes the app.
-        if (ROOT / "ui" / "admin_notices.py").exists():
-            pages.append(st.Page("ui/admin_notices.py", title="Notices", icon=":material/campaign:", url_path="notices"))
-        if (ROOT / "ui" / "admin_evaluation.py").exists():
-            pages.append(st.Page("ui/admin_evaluation.py", title="Evaluation", icon=":material/monitoring:",
-                                 url_path="evaluation"))
+        pages = _pages(ADMIN_PAGES, default_title=None if must_change else "Overview")
         pages.append(st.Page("ui/chat.py", title="Ask", icon=":material/forum:", url_path="ask"))
         pages.append(account_page(default=must_change))
         return pages
     return [
         st.Page("ui/chat.py", title="Ask", icon=":material/forum:", url_path="ask", default=not must_change),
-        st.Page("ui/student_home.py", title="My dashboard", icon=":material/dashboard:", url_path="my-dashboard"),
+        *_pages(STUDENT_PAGES),
         account_page(default=must_change),
     ]
 

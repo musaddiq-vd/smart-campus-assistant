@@ -118,9 +118,22 @@ def make_auth_module(max_failures: int = 3) -> types.ModuleType:
     return mod
 
 
-ADMIN_NOTICES = (ROOT / "ui" / "admin_notices.py").exists()
-ADMIN_PAGES = ["Overview", "Students", *(["Notices"] if ADMIN_NOTICES else []), "Evaluation", "Ask", "Account"]
-STUDENT_PAGES = ["Ask", "My dashboard", "Account"]
+def _existing(pages: list[tuple[str, str]]) -> list[str]:
+    """Titles of the pages whose file exists (app.py registers a page only when its file is there)."""
+    return [title for file, title in pages if (ROOT / "ui" / file).exists()]
+
+
+ADMIN_PAGES = [
+    *_existing([("admin_overview.py", "Overview"), ("admin_students.py", "Students"), ("admin_requests.py", "Requests"),
+                ("admin_notices.py", "Notices"), ("admin_insights.py", "Insights")]),
+    "Ask", "Account",
+]
+STUDENT_PAGES = [
+    "Ask",
+    *_existing([("student_home.py", "My dashboard"), ("student_payments.py", "Pay fees"),
+                ("student_requests.py", "My requests")]),
+    "Account",
+]
 
 
 @pytest.fixture
