@@ -275,10 +275,17 @@ def _block_statements(body: str) -> tuple[str, list[str]]:
 
 
 def _context_facts(
-    text: str, limit: int = 2, question: str = "", fallback: bool = True, min_hits: int = 1
+    text: str,
+    limit: int = 2,
+    question: str = "",
+    fallback: bool = True,
+    min_hits: int = 1,
+    min_coverage: float = 0.0,
 ) -> list[tuple[int, str]]:
     """The statements of the numbered context blocks that best match the question: [(n, statement)].
 
+    ``min_coverage`` is the share of the question's topic words a statement (with its heading) must
+    contain. It stops one generic shared word ("campus") from passing an unrelated fact off as an answer.
     When nothing matches, the first statement of each block is used (or nothing with ``fallback=False``).
     """
     from smart_campus_assistant.local_search import tokenize
@@ -292,10 +299,13 @@ def _context_facts(
         if not statements:
             continue
         firsts.append((n, statements[0].rstrip(".")))
-        heading_hits = len(wanted & set(tokenize(heading)))
+        heading_terms = wanted & set(tokenize(heading))
+        heading_hits = len(heading_terms)
         for pos, statement in enumerate(statements):
-            hits = len(wanted & set(tokenize(statement)))
-            if hits >= min_hits:
+            body_terms = wanted & set(tokenize(statement))
+            hits = len(body_terms)
+            covered = len(body_terms | heading_terms) / len(wanted) if wanted else 0.0
+            if hits >= min_hits and covered >= min_coverage:
                 # Body matches count most; the heading and an earlier block break ties.
                 scored.append((hits + 0.5 * heading_hits - 0.01 * n, n, pos, statement.rstrip(".")))
     if not scored:
@@ -429,7 +439,8 @@ class FakeCampusChatModel(BaseChatModel):
             )
         # task == "answer" (simple path)
         question = human.rsplit("Question:", 1)[-1].split("\n\nAnswer format", 1)[0].strip()
-        facts = _context_facts(human.split("Context:", 1)[-1].rsplit("Question:", 1)[0], question=question)
+        facts = _context_facts(human.split("Context:", 1)[-1].rsplit("Question:", 1)[0], question=question,
+                               fallback=False, min_coverage=0.5)
         if not facts:
             return "The college documents provided do not contain this information."
         if len(facts) == 1:

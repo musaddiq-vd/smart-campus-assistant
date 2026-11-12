@@ -18,6 +18,7 @@ from ui.components import (  # noqa: E402
     citation_cards_html,
     flow_strip_html,
     get_college_name,
+    get_student_safe,
     has_aws_credentials,
     hero_html,
     is_demo_mode,
@@ -267,6 +268,30 @@ def save_turn(email: str, question: str, result: dict) -> None:
         pass
 
 
+def log_for_insights(user: dict, question: str, result: dict) -> None:
+    """Record the question for the admin Insights page (role and branch only, no identity).
+
+    Any failure here, including a missing question_log module, is ignored: it must never affect the chat.
+    """
+    try:
+        from smart_campus_assistant import question_log
+
+        role = "admin" if user.get("role") == "admin" else "student"
+        branch = ""
+        if role == "student":
+            branch = str((get_student_safe(user.get("student_id")) or {}).get("branch") or "")
+        question_log.log_question(
+            question,
+            result.get("route") or "simple",
+            result.get("answer") or "",
+            citations=len(dedupe(result.get("citations") or [])),
+            role=role,
+            branch=branch,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def clear_chat() -> None:
     st.session_state.messages = []
     user = st.session_state.get("user") or {}
@@ -393,6 +418,7 @@ if question:
             render_result(result, is_admin)
             st.session_state.messages.append({"role": "assistant", "result": result})
             save_turn(user.get("email", ""), question, result)
+            log_for_insights(user, question, result)
         except Exception as exc:  # show a friendly box instead of a stack trace
             err = explain_error(exc)
             render_error(err)
