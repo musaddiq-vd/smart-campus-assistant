@@ -13,10 +13,12 @@ if str(ROOT) not in sys.path:
 
 from ui.components import (  # noqa: E402
     NOTICE_CSS,
+    email_note,
     empty_state,
     get_branches,
     hero_html,
     notice_card_html,
+    notify_students,
     require_role,
     section_header,
 )
@@ -65,6 +67,9 @@ def publish() -> None:
     except Exception as exc:  # noqa: BLE001
         _flash("error", f"Could not save the notice: {type(exc).__name__}.")
         return
+    emailed = notify_students("notify_new_notice", notice)
+    if emailed:
+        message = (message + email_note(f"Notice to {emailed} student{'s' if emailed != 1 else ''}")).strip()
     if indexed:
         _flash("success", f"Published {notice['id']}. {message}")
     else:

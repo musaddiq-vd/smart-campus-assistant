@@ -24,3 +24,19 @@ def _no_question_log_in_app_database():
         os.environ.pop("SCA_QUESTION_LOG", None)
     else:
         os.environ["SCA_QUESTION_LOG"] = previous
+
+
+@pytest.fixture(autouse=True)
+def _no_emails_from_ui_tests():
+    """Page tests run admin actions against the app database: keep student emails off there too.
+
+    Tests of the notifications themselves use temporary databases and switch them back on.
+    Set by hand for the same reason as the question log above.
+    """
+    previous = os.environ.get("SCA_EMAIL_NOTIFICATIONS")
+    os.environ["SCA_EMAIL_NOTIFICATIONS"] = "0"
+    yield
+    if previous is None:
+        os.environ.pop("SCA_EMAIL_NOTIFICATIONS", None)
+    else:
+        os.environ["SCA_EMAIL_NOTIFICATIONS"] = previous

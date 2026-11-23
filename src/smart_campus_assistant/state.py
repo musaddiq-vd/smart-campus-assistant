@@ -29,12 +29,19 @@ class UsageRecord(TypedDict):
     latency_ms: float
 
 
+class HistoryTurn(TypedDict):
+    question: str  # an earlier question in this chat, as the user typed it
+    answer: str  # the answer the assistant gave to it
+
+
 class InputState(TypedDict, total=False):
     question: str  # required in practice
     student_id: Optional[str]  # logged-in student, e.g. "XYZ24CSE001"; None for guests
+    history: list[HistoryTurn]  # earlier turns of the same chat, oldest first (optional)
 
 
 class AgentState(InputState, total=False):
+    original_question: str  # set only when a follow-up was rewritten into ``question``
     route: Literal["simple", "deep", "personal"]
     route_reason: str
     docs: list[Document]

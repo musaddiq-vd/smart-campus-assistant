@@ -23,7 +23,8 @@ _lock = threading.Lock()
 
 # Fields kept per message (everything else is dropped).
 _USER_FIELDS = ("role", "content", "created_at")
-_ASSISTANT_FIELDS = ("role", "answer", "route", "route_reason", "citations", "steps", "no_record", "created_at")
+_ASSISTANT_FIELDS = ("role", "answer", "route", "route_reason", "citations", "steps", "no_record", "understood_as",
+                     "created_at")
 _CITATION_FIELDS = ("source", "college", "page", "doc_type", "snippet")
 _STEP_FIELDS = ("node", "n_docs", "n_plan", "guest")  # step names plus small counts for the flow strip
 
@@ -52,6 +53,8 @@ def _clean(message: object) -> dict | None:
     elif role == "assistant":
         out = {k: message[k] for k in _ASSISTANT_FIELDS if k in message}
         out["answer"] = str(out.get("answer") or "")
+        if "understood_as" in out:
+            out["understood_as"] = str(out["understood_as"] or "")[:2000]
         out["citations"] = [
             {k: c[k] for k in _CITATION_FIELDS if k in c}
             for c in (out.get("citations") or [])

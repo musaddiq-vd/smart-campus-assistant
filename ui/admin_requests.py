@@ -12,7 +12,16 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ui.components import chip_html, empty_state, hero_html, kpi_card_html, require_role, section_header  # noqa: E402
+from ui.components import (  # noqa: E402
+    chip_html,
+    email_note,
+    empty_state,
+    hero_html,
+    kpi_card_html,
+    notify_students,
+    require_role,
+    section_header,
+)
 from ui.theme import PERSONAL_COLOR, ROUTER_COLOR, SIMPLE_COLOR, inject_css  # noqa: E402
 
 inject_css(max_width="72rem")
@@ -81,7 +90,8 @@ def send_reply(request_id: str) -> None:
         _flash("error", f"Could not send the reply: {type(exc).__name__}.")
         return
     st.session_state[_reply_key(request_id)] = ""
-    _flash("success", f"Reply sent on {request_id}. Status: {requests_mod.status_label(request['status'])}.")
+    emailed = email_note("Reply to the student") if notify_students("notify_request_reply", request) else ""
+    _flash("success", f"Reply sent on {request_id}. Status: {requests_mod.status_label(request['status'])}.{emailed}")
 
 
 def change_status(request_id: str, status: str) -> None:

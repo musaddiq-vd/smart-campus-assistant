@@ -656,3 +656,34 @@ def test_admin_page_queue_filters_reply_and_status(app_db):
     at = _click(at, "Reopen")
     assert sr.get_request(first["id"], path=app_db)["status"] == "open"
     assert sr.get_request(second["id"], path=app_db)["status"] == "open"  # the other request was never touched
+
+
+def test_admin_reply_on_page_emails_the_student(app_db, monkeypatch):
+    from smart_campus_assistant import mailer, notifications
+
+    monkeypatch.setenv("SCA_EMAIL_NOTIFICATIONS", "1")
+    monkeypatch.setattr(mailer, "email_configured", lambda: False)  # recorded as skipped, never sent
+    request = _make(app_db, A, "fees", "Fee receipt missing")
+    at = _page("admin_requests.py", ADMIN)
+    at = at.button(key=f"req_admin_open_{request['id']}").click().run()
+    at.text_area(key=f"req_admin_reply_{request['id']}").set_value("Your receipt is ready.")
+    at = _click(at, "Send reply")
+    assert not at.exception
+    assert any("Reply to the student recorded in the outbox but not sent" in text for text in _alerts(at))
+    rows = notifications.recent(path=app_db)
+    assert [(r["kind"], r["recipient"]) for r in rows] == [("request_reply", A[1])]
+
+
+def test_admin_reply_still_works_when_emails_fail(app_db, monkeypatch):
+    from smart_campus_assistant import notifications
+
+    monkeypatch.setenv("SCA_EMAIL_NOTIFICATIONS", "1")
+    monkeypatch.setattr(notifications, "notify_request_reply", lambda *a: 1 / 0)
+    request = _make(app_db, A, "fees", "Fee receipt missing")
+    at = _page("admin_requests.py", ADMIN)
+    at = at.button(key=f"req_admin_open_{request['id']}").click().run()
+    at.text_area(key=f"req_admin_reply_{request['id']}").set_value("Your receipt is ready.")
+    at = _click(at, "Send reply")
+    assert not at.exception
+    assert sr.get_request(request["id"], path=app_db)["status"] == "in_progress"
+    assert not any("emailed" in text for text in _alerts(at))

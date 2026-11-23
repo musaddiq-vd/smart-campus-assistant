@@ -159,14 +159,36 @@ def retry_interrupted() -> None:
         st.session_state.pending_question = messages.pop()["content"]
 
 
-def run_question(question: str, demo: bool, live, student_id: str | None = None) -> dict:
+def chat_history(messages: list[dict]) -> list[dict]:
+    """Earlier answered turns of this chat as ``{"question", "answer"}`` pairs, oldest first.
+
+    Turns that ended in an error, or a question still waiting for its answer, are left out.
+    The graph keeps only the last few turns.
+    """
+    turns: list[dict] = []
+    for prev, msg in zip(messages, messages[1:], strict=False):
+        if prev.get("role") != "user" or msg.get("role") != "assistant" or msg.get("error"):
+            continue
+        result = msg.get("result") or {}
+        # A rewritten follow-up is sent in its standalone form, so a chain of follow-ups keeps its topic.
+        question = result.get("understood_as") or prev.get("content")
+        if question and result.get("answer"):
+            turns.append({"question": question, "answer": result["answer"]})
+    return turns
+
+
+def run_question(question: str, demo: bool, live, student_id: str | None = None,
+                 history: list[dict] | None = None) -> dict:
     """Stream the graph, updating the live flow strip; returns a result dict for history."""
     graph = load_graph(demo)
     result = {"question": question, "citations": [], "steps": [], "student_id": student_id}
     steps = result["steps"]
     live.html(live_html(None, [], "Routing…"))
+    payload = {"question": question, "student_id": student_id}
+    if history:
+        payload["history"] = history
 
-    for chunk in graph.stream({"question": question, "student_id": student_id}, stream_mode="updates"):
+    for chunk in graph.stream(payload, stream_mode="updates"):
         for node, update in (chunk or {}).items():
             if node.startswith("__"):
                 continue
@@ -178,6 +200,8 @@ def run_question(question: str, demo: bool, live, student_id: str | None = None)
             for key in ("route", "route_reason", "answer", "citations"):
                 if key in update:
                     result[key] = update[key]
+            if update.get("original_question") and update.get("question"):
+                result["understood_as"] = update["question"]  # the follow-up as a standalone question
 
             nxt = NEXT_STEP.get(node)
             if isinstance(nxt, dict):
@@ -193,6 +217,8 @@ def run_question(question: str, demo: bool, live, student_id: str | None = None)
 
 def render_result(result: dict, is_admin: bool = False) -> None:
     route_badge(result.get("route"), result.get("route_reason"))
+    if result.get("understood_as"):
+        st.caption(f"Understood as: {result['understood_as']}", help="Your follow-up, read with the earlier messages.")
     st.markdown(result.get("answer") or "_No answer was returned._")
     if is_admin and result.get("no_record"):
         st.html(admin_hint_html())
@@ -240,7 +266,7 @@ def stored_to_message(rec: dict) -> dict:
     """Saved record -> in-memory chat message."""
     if rec.get("role") == "user":
         return {"role": "user", "content": rec.get("content", "")}
-    keys = ("answer", "route", "route_reason", "citations", "steps", "no_record")
+    keys = ("answer", "route", "route_reason", "citations", "steps", "no_record", "understood_as")
     return {"role": "assistant", "result": {k: rec[k] for k in keys if k in rec}}
 
 
@@ -262,6 +288,8 @@ def save_turn(email: str, question: str, result: dict) -> None:
     answer = {"role": "assistant", **{k: result.get(k) for k in ("answer", "route", "route_reason", "citations", "steps")}}
     if result.get("no_record"):
         answer["no_record"] = True
+    if result.get("understood_as"):
+        answer["understood_as"] = result["understood_as"]
     try:
         store.append_messages(email, [{"role": "user", "content": question}, answer])
     except Exception:  # noqa: BLE001
@@ -401,6 +429,7 @@ if not st.session_state.messages and not question:
     render_empty_state(user)
 
 if question:
+    history = chat_history(st.session_state.messages)  # turns before this question
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user", avatar=":material/person:"):
         st.markdown(question)
@@ -413,12 +442,13 @@ if question:
                     "with `SCA_DEMO_MODE=1` to try the full flow offline.",
                 )
             live = st.empty()
-            result = run_question(question, demo, live, student_id)
+            result = run_question(question, demo, live, student_id, history)
             live.empty()
             render_result(result, is_admin)
             st.session_state.messages.append({"role": "assistant", "result": result})
             save_turn(user.get("email", ""), question, result)
-            log_for_insights(user, question, result)
+            # Insights get the follow-up as a standalone question ("ECE fee?", not "aur ECE ka?").
+            log_for_insights(user, result.get("understood_as") or question, result)
         except Exception as exc:  # show a friendly box instead of a stack trace
             err = explain_error(exc)
             render_error(err)

@@ -209,3 +209,29 @@ def test_admin_reset_refusals(db_file):
     with pytest.raises(KeyError):
         auth.admin_reset_password("ghost@xyz.edu.example", auth.ADMIN_EMAIL, path=db_file)
     assert auth.authenticate(auth.ADMIN_EMAIL, "admin-pass-1", path=db_file)
+
+
+def test_smtp_session_reuses_one_connection_and_reconnects_after_error(smtp):
+    connections = []
+    real = smtp
+
+    class Counting(real):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            connections.append(self)
+
+    mailer.smtplib.SMTP = Counting
+    with mailer.smtp_session() as send:
+        assert send("a@x.example", "s", "b") and send("b@x.example", "s", "b")
+        assert len(connections) == 1  # one login for both emails
+        real.fail = True
+        assert send("c@x.example", "s", "b") is False  # never raises
+        real.fail = False
+        assert send("d@x.example", "s", "b")
+    assert len(connections) == 2  # a fresh connection after the error
+    assert [msg["To"] for _, msg in real.sent] == ["a@x.example", "b@x.example", "d@x.example"]
+
+
+def test_smtp_session_without_configuration_sends_nothing():
+    with mailer.smtp_session() as send:
+        assert send("a@x.example", "s", "b") is False

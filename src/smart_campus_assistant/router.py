@@ -5,7 +5,7 @@ import re
 
 from langchain_core.runnables import RunnableConfig
 
-from smart_campus_assistant import prompts
+from smart_campus_assistant import followup, prompts
 from smart_campus_assistant.config import ROUTES
 from smart_campus_assistant.personal import mentions_other_person
 from smart_campus_assistant.simple_rag import call_llm, mentioned_branches
@@ -133,7 +133,15 @@ def route_question(state: AgentState, config: RunnableConfig) -> dict:
         # Nothing to answer: reply directly with no model call (the graph ends after this node).
         return {"question": "", "route": "simple", "route_reason": "Empty question.",
                 "answer": EMPTY_QUESTION_MESSAGE, "citations": []}
-    cleaned = {"question": question} if question != raw else {}
+    # A follow-up ("aur ECE ka?") becomes a standalone question; every later node sees only that.
+    standalone, rewrite_record = followup.rewrite_follow_up(question, followup.clean_history(state.get("history")))
+    early_usage = [rewrite_record] if rewrite_record else []
+    cleaned = {"question": standalone} if standalone != raw else {}
+    if early_usage:
+        cleaned["usage"] = early_usage
+    if standalone != question:
+        cleaned["original_question"] = question
+    question = standalone
     forced = _forced_route(config)
     if forced:
         return {**cleaned, "route": forced, "route_reason": f"Forced route: {forced}."}
@@ -146,4 +154,5 @@ def route_question(state: AgentState, config: RunnableConfig) -> dict:
 
     parsed = parse_route(text)
     route, reason = parsed if parsed else heuristic_route(question)
-    return {**cleaned, "route": route, "route_reason": reason or f"Router chose {route}.", "usage": [record]}
+    return {**cleaned, "route": route, "route_reason": reason or f"Router chose {route}.",
+            "usage": [*early_usage, record]}

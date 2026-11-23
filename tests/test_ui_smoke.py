@@ -67,7 +67,11 @@ class FakeGraph:
         route = "deep" if "compare" in q else "personal" if (" my " in f" {q} " or "meri" in q) else "simple"
         usage = [{"input_tokens": 400, "output_tokens": 80, "latency_ms": 120.0}]
         cite = {"source": "xyz/fees.md", "college": "xyz", "page": 1, "snippet": "Tuition fee per semester..."}
-        yield {"router": {"route": route, "route_reason": "Single fact lookup.", "usage": usage}}
+        router_update = {"route": route, "route_reason": "Single fact lookup.", "usage": usage}
+        if inputs.get("history") and q.startswith("aur "):  # a follow-up the real router would rewrite
+            router_update.update(original_question=inputs["question"],
+                                 question=f"{inputs['question'][4:]} ({inputs['history'][-1]['question']})")
+        yield {"router": router_update}
         if route == "simple":
             yield {"simple_answer": {"answer": "The library fine is **Rs 5** per day [1].", "citations": [cite], "docs": [1, 2, 3, 4, 5], "usage": usage}}
         elif route == "personal":
@@ -356,7 +360,10 @@ def test_admin_pages_and_overview(backend):
     assert "₹1,00,000" in text  # collected
     assert "₹1,90,000" in text  # outstanding
     assert "Action needed" in text
-    actions = at.dataframe[-1].value
+    # The "Action needed" table (the email outbox table below it depends on the local database).
+    # Tests run with SCA_EMAIL_NOTIFICATIONS=0, so the reminder button is switched off.
+    assert at.button(key="overview_fee_reminders").disabled
+    actions = next(df.value for df in at.dataframe if "Issue" in df.value.columns)
     assert set(actions["Issue"]) == {"Fees overdue", "Overdue books", "Low attendance"}
     for word in FORBIDDEN:
         assert word not in text, word
@@ -421,6 +428,43 @@ def test_chat_history_survives_refresh_and_clear(backend):
     again.session_state["user"] = dict(ACCOUNTS["aarav@xyz.edu.example"][1])
     again.run()
     assert "library fine per day?" not in [str(m.value) for m in again.markdown]
+
+
+def test_follow_up_sends_earlier_turns_and_shows_understood_as(backend, monkeypatch):
+    from smart_campus_assistant import question_log
+
+    logged = []
+    monkeypatch.setattr(question_log, "log_question", lambda question, *a, **k: logged.append(question))
+    at = as_student()
+    at.chat_input[0].set_value("What is the library fine per day?").run()
+    assert "history" not in backend.graph.graph.calls[-1]  # the first question has nothing before it
+    at.chat_input[0].set_value("aur lost book ka?").run()
+    assert not at.exception
+    history = backend.graph.graph.calls[-1]["history"]
+    assert history == [{"question": "What is the library fine per day?",
+                        "answer": "The library fine is **Rs 5** per day [1]."}]
+    assert "Understood as: lost book ka? (What is the library fine per day?)" in all_text(at)
+    # Insights get the standalone question, not the bare follow-up.
+    assert logged == ["What is the library fine per day?", "lost book ka? (What is the library fine per day?)"]
+    # A second follow-up sees the first one in its standalone form.
+    at.chat_input[0].set_value("aur late fee?").run()
+    assert backend.graph.graph.calls[-1]["history"][-1]["question"] == "lost book ka? (What is the library fine per day?)"
+    # The rewritten question is saved with the answer, so it is shown again after a refresh.
+    fresh = AppTest.from_file(APP, default_timeout=30)
+    fresh.session_state["user"] = dict(ACCOUNTS["aarav@xyz.edu.example"][1])
+    fresh.run()
+    assert "Understood as: lost book ka?" in all_text(fresh)
+
+
+def test_failed_turns_are_not_sent_as_history(backend):
+    at = as_student()
+    at.session_state["messages"] = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "error": {"title": "x", "body": "y", "details": ""}},
+    ]
+    at.run()
+    at.chat_input[0].set_value("What is the library fine per day?").run()
+    assert "history" not in backend.graph.graph.calls[-1]
 
 
 def test_interrupted_question_offers_retry(backend):

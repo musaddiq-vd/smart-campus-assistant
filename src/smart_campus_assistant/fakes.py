@@ -370,6 +370,29 @@ def _plan_for(question: str) -> list[str]:
     return [f"{part}?" for part in parts[:4]] if len(parts) >= 2 else []
 
 
+# Openers that only continue the last topic; the fake rewrite drops them before adding that topic.
+_FOLLOW_UP_OPENER = re.compile(r"^\s*(and|or|but|so|then|what about|how about|same for|aur|ya|toh|lekin)\b[\s,]*",
+                               flags=re.IGNORECASE)
+
+
+def _fake_rewrite(human: str) -> str:
+    """Offline stand-in for the follow-up rewrite: the follow-up plus the topic of the last question.
+
+    "aur ECE ka?" after "What is the CSE tuition fee?" becomes "ECE ka? (about: What is the CSE tuition fee?)".
+    Who the question is about stays exactly as the follow-up says, like the real rewrite.
+    """
+    follow_up = human.rsplit("Follow-up:", 1)[-1].split("\nStandalone question:", 1)[0].strip()
+    asked = re.findall(r"^User:\s*(.+)$", human, flags=re.MULTILINE)
+    if not asked or not follow_up:
+        return follow_up
+    from smart_campus_assistant.followup import FOLLOW_UP_START, REFERENCE_WORDS
+
+    if not (FOLLOW_UP_START.search(follow_up) or REFERENCE_WORDS.search(follow_up)):
+        return follow_up  # short but complete ("Hostel fee kitni hai?"): a new topic, kept as asked
+    rest = _FOLLOW_UP_OPENER.sub("", follow_up).strip() or follow_up
+    return f"{rest} (about: {asked[-1].strip()})"
+
+
 class FakeCampusChatModel(BaseChatModel):
     """Deterministic chat model that answers each prompt type sensibly and reports token usage."""
 
@@ -395,6 +418,8 @@ class FakeCampusChatModel(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=message)])
 
     def _respond(self, task: str, human: str) -> str:
+        if task == "rewrite":
+            return _fake_rewrite(human)
         if task == "route":
             # The last "Question:" line is the user's question (earlier ones are few-shot examples).
             questions = re.findall(r"^Question:\s*(.+)$", human, flags=re.MULTILINE)

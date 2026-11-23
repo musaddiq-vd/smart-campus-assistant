@@ -117,6 +117,30 @@ def router_messages(question: str) -> list[BaseMessage]:
     ]
 
 
+# ---------------------------------------------------------------- follow-up rewrite
+
+REWRITE_SYSTEM = f"""Task: rewrite
+You turn a follow-up message in a chat with the student helpdesk of {COLLEGE_NAME} into ONE standalone
+question that can be understood without the conversation.
+- Use the conversation only to fill in what the follow-up refers to: the topic, branch, semester, fee,
+  exam, rule or document it means. Example: after "What is the CSE tuition fee?", "aur ECE ka?" becomes
+  "ECE ka tuition fee kitna hai?".
+- Keep the user's own words and language style (English or Hinglish) as far as possible.
+- Keep who the question is about exactly as the follow-up says: "my / mera / meri" stays the user's own;
+  a friend, classmate or any other person stays that person. Never change one into the other.
+- Do not answer the question. Do not copy amounts, dates or other facts from earlier answers into it.
+- If the follow-up is already complete on its own, or starts a new topic, return it unchanged.
+Return ONLY the standalone question on one line."""
+
+
+def rewrite_messages(question: str, history: list[dict]) -> list[BaseMessage]:
+    turns = "\n".join(f"User: {t['question']}\nAssistant: {t['answer']}" for t in history)
+    return [
+        SystemMessage(content=REWRITE_SYSTEM),
+        HumanMessage(content=f"Conversation so far:\n{turns}\n\nFollow-up: {question}\nStandalone question:"),
+    ]
+
+
 # ---------------------------------------------------------------- simple answer
 
 SIMPLE_ANSWER_SYSTEM = f"""Task: answer

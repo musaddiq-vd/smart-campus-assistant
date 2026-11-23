@@ -139,3 +139,66 @@ if actions:
     st.dataframe(pd.DataFrame(shown), hide_index=True, width="stretch")
 else:
     st.success("Nothing needs follow-up right now.", icon=":material/check_circle:")
+
+
+# ---------- email notifications ----------
+
+def queue_fee_reminders_now() -> None:
+    """Button callback: queue today's fee reminders and send them in the background."""
+    from ui.components import notify_students
+
+    queued = notify_students("queue_fee_reminders")
+    if queued is None:  # also when the notifications module cannot be loaded
+        st.session_state["overview_flash"] = ("error", "Could not queue fee reminders.")
+    elif queued:
+        st.session_state["overview_flash"] = ("success", f"{plural(queued, 'fee reminder')} queued.")
+    else:
+        st.session_state["overview_flash"] = (
+            "info", "No new fee reminders today (each student gets at most one per stage or week).")
+
+
+def render_notifications() -> None:
+    try:
+        from smart_campus_assistant import mailer, notifications
+    except Exception:  # noqa: BLE001
+        return
+    section_header(
+        "Email notifications",
+        "Students are emailed when you reply to a request or publish a notice for their branch, "
+        "and get fee reminders 7 days before the due date and weekly while overdue.",
+    )
+    flash = st.session_state.pop("overview_flash", None)
+    if flash:
+        getattr(st, flash[0])(flash[1])
+    on = notifications.enabled()
+    if not on:
+        st.info("Email notifications are turned off (SCA_EMAIL_NOTIFICATIONS=0).", icon=":material/notifications_off:")
+    elif not mailer.email_configured():
+        st.info("Email (SMTP) is not configured, so notifications are recorded below as skipped but not sent.",
+                icon=":material/mail:")
+    st.button("Send fee reminders now", icon=":material/notifications_active:", on_click=queue_fee_reminders_now,
+              key="overview_fee_reminders", disabled=not on)
+    # Same "today" as the dashboards, so reminder amounts always match what students see.
+    st.caption(f"Fee reminders are worked out as of {nice_date(notifications.reminder_date(records[0]))}, "
+               "the date of the student records.")
+    try:
+        if on and notifications.due_count():
+            notifications.deliver_in_background()  # retry emails that failed earlier or were interrupted
+        rows = notifications.recent(20)
+    except Exception:  # noqa: BLE001
+        rows = []
+    if rows:
+        st.dataframe(
+            pd.DataFrame([{
+                "Time": nice_date(r["created_at"][:10]), "Type": notifications.KINDS.get(r["kind"], r["kind"]),
+                "Student": r["student_id"], "To": r["recipient"], "Subject": r["subject"],
+                "Status": "Waiting to retry" if r["status"] == "pending" and r["attempts"] else r["status"].title(),
+                "Note": r["error"],
+            } for r in rows]),
+            hide_index=True, width="stretch",
+        )
+    else:
+        st.caption("No emails yet.")
+
+
+render_notifications()

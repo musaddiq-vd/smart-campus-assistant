@@ -856,3 +856,38 @@ def list_notices_safe(branch: str | None = None, limit: int | None = None) -> li
         return notices.list_notices(branch=branch, limit=limit)
     except Exception:  # noqa: BLE001
         return []
+
+
+# ---------- email notifications ----------
+
+def notify_students(action: str, *args):
+    """Queue student emails with ``notifications.<action>(*args)`` and send them in the background.
+
+    Returns what the action returned (count or bool), or None when it failed. Emails must never
+    break the admin action that triggered them, so every error is swallowed.
+    """
+    try:
+        from smart_campus_assistant import notifications
+
+        result = getattr(notifications, action)(*args)
+        if result:
+            notifications.deliver_in_background()
+        return result
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def email_note(what: str) -> str:
+    """" {what} queued for email." when SMTP is set up, else a plain note that it was only recorded.
+
+    "Queued", not "emailed": the email is sent in the background and may still be retried.
+    """
+    try:
+        from smart_campus_assistant import mailer
+
+        configured = mailer.email_configured()
+    except Exception:  # noqa: BLE001
+        configured = False
+    if configured:
+        return f" {what} queued for email (status on the Overview page)."
+    return f" {what} recorded in the outbox but not sent (email/SMTP is not configured)."

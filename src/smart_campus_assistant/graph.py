@@ -1,6 +1,6 @@
 """LangGraph wiring:
 
-START -> router -> simple_answer -> END
+START -> router -> simple_answer -> END        (router first rewrites a follow-up into a standalone question)
                 -> personal_answer -> END
                 -> planner -> researcher* -> writer -> END
                 -> END (blank question: the router already answered)
@@ -65,14 +65,23 @@ def build_graph():
 graph = build_graph()
 
 
-def run_question(question: str, force_route: str | None = None, student_id: str | None = None) -> dict:
+def run_question(
+    question: str,
+    force_route: str | None = None,
+    student_id: str | None = None,
+    history: list[dict] | None = None,
+) -> dict:
     """Run one question; returns the final state plus ``summary`` (usage totals) and ``total_latency_ms``.
 
-    ``student_id`` is the logged-in student (None for guests).
+    ``student_id`` is the logged-in student (None for guests). ``history`` holds the earlier
+    ``{"question", "answer"}`` turns of the same chat, so follow-up questions can be understood.
     """
     config = {"configurable": {"force_route": force_route}} if force_route else None
+    payload: dict = {"question": question, "student_id": student_id}
+    if history:
+        payload["history"] = history
     start = time.perf_counter()
-    state = graph.invoke({"question": question, "student_id": student_id}, config=config)
+    state = graph.invoke(payload, config=config)
     total_ms = (time.perf_counter() - start) * 1000
     result = dict(state)
     result["summary"] = usage.summarize_usage(result.get("usage", []))

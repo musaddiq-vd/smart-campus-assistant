@@ -265,3 +265,19 @@ def test_student_home_shows_branch_notices(backend, notices_file):  # noqa: F811
     assert not at.exception
     text = _text(at)
     assert "Latest notices" in text and "CSE lab practicals" in text and "Library closed on Diwali" in text
+
+
+def test_admin_page_publish_emails_students(backend, notices_file, monkeypatch):  # noqa: F811
+    from smart_campus_assistant import notifications
+
+    sent = []
+    monkeypatch.setattr(notices, "index_notice", lambda n: (True, "Indexed for search."))
+    monkeypatch.setattr(notifications, "notify_new_notice", lambda notice: sent.append(notice["id"]) or 3)
+    monkeypatch.setattr(notifications, "deliver_in_background", lambda: None)
+    at = _admin_page()
+    at.text_input(key="notice_title").input("Mid-sem exam rescheduled")
+    at.text_area(key="notice_body").input("The ME mid-sem exam is moved to 2026-11-20.")
+    at.button(key="notice_publish").click().run()
+    assert not at.exception
+    assert sent == [notices.list_notices()[0]["id"]]
+    assert "Notice to 3 students" in at.success[0].value
