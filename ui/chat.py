@@ -247,6 +247,38 @@ def render_error(err: BackendError) -> None:
             st.code(err.details, language="text")
 
 
+@st.cache_resource(show_spinner=False)
+def _shared_budget():
+    """One question budget per server process, shared by every session (keyed by account)."""
+    from smart_campus_assistant.rate_limit import QuestionBudget
+
+    return QuestionBudget()
+
+
+def question_budget():
+    """The per-account question budget, or None when the limit cannot be loaded (the chat still works)."""
+    try:
+        return _shared_budget()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def limit_message(seconds: float) -> str:
+    try:
+        from smart_campus_assistant.rate_limit import wait_message
+    except Exception:  # noqa: BLE001
+        return "You have asked a lot of questions in the last hour. Please try again later."
+    return wait_message(seconds)
+
+
+def units_for_route(route: str | None) -> int:
+    try:
+        from smart_campus_assistant.rate_limit import units_for
+    except Exception:  # noqa: BLE001
+        return 1
+    return units_for(route)
+
+
 def ask_example(question: str) -> None:
     st.session_state.pending_question = question
 
@@ -434,6 +466,8 @@ if question:
     with st.chat_message("user", avatar=":material/person:"):
         st.markdown(question)
     with st.chat_message("assistant", avatar=":material/school:"):
+        budget = question_budget()
+        spent = 0  # units to count for this question (none if it never reached the model)
         try:
             if not demo and not has_aws_credentials():
                 raise BackendError(
@@ -441,8 +475,13 @@ if question:
                     "No AWS credentials were found (environment, `.env` or `~/.aws`). Add them, or start the app "
                     "with `SCA_DEMO_MODE=1` to try the full flow offline.",
                 )
+            wait = budget.wait_seconds(owner) if budget is not None else 0.0
+            if wait > 0:
+                raise BackendError("Question limit reached", limit_message(wait))
             live = st.empty()
+            spent = 1  # from here on the model may be called, even if the run fails
             result = run_question(question, demo, live, student_id, history)
+            spent = units_for_route(result.get("route"))
             live.empty()
             render_result(result, is_admin)
             st.session_state.messages.append({"role": "assistant", "result": result})
@@ -455,3 +494,6 @@ if question:
             st.session_state.messages.append(
                 {"role": "assistant", "error": {"title": err.title, "body": err.body, "details": err.details}}
             )
+        finally:
+            if budget is not None and spent:
+                budget.record(owner, spent)

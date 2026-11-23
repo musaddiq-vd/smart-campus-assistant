@@ -428,6 +428,30 @@ def fee_late_fee(due_amount: object, due_date: object, as_of: object) -> dict:
     return {"days_overdue": days, "late_fee": fee, "total_payable": due + fee}
 
 
+def fee_status(fees: object, as_of: object = None) -> str:
+    """The fee status everyone sees: "paid", "overdue", "unpaid" or "partially_paid".
+
+    One rule for the dashboards, the admin pages and the assistant's record text, so they never
+    disagree: nothing due is "paid"; a due date in the past (as of ``as_of``) or a stored
+    "overdue" is "overdue"; otherwise "unpaid" when nothing was paid yet (a new admission is
+    stored as "partially_paid" with 0 paid) and "partially_paid" when some was.
+    """
+    fees = fees if isinstance(fees, dict) else {}
+
+    def rupees(value: object) -> int:
+        try:
+            return int(round(float(value or 0)))
+        except (TypeError, ValueError):
+            return 0
+
+    if rupees(fees.get("due")) <= 0:
+        return "paid"
+    stored = str(fees.get("status") or "").strip().lower()
+    if stored == "overdue" or (as_of is not None and days_overdue(fees.get("due_date"), as_of) > 0):
+        return "overdue"
+    return "partially_paid" if rupees(fees.get("paid")) > 0 else "unpaid"
+
+
 def library_book_fine(due_date: object, as_of: object) -> int:
     """Overdue fine for ONE book: Rs 5 per day after the due date, capped at Rs 500."""
     return accrued_charge(due_date, as_of, LIBRARY_FINE_PER_DAY, LIBRARY_FINE_CAP)[1]
@@ -584,7 +608,7 @@ def student_context(record: dict) -> str:
     fees = record.get("fees") or {}
     if fees:
         due = fees.get("due", 0) or 0
-        status = str(fees.get("status", "")).replace("_", " ")
+        status = fee_status(fees, today).replace("_", " ")
         line = (
             f"Fees ({fees.get('semester', '')}): total {_rs(fees.get('total'))}, paid {_rs(fees.get('paid'))}, "
             f"due {_rs(due)}"

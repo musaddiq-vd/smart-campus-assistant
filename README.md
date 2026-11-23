@@ -13,7 +13,7 @@ Students ask about the college or their *own* record, pay their fees and raise r
 ![S3 Vectors](https://img.shields.io/badge/Vector%20store-S3%20Vectors-569A31?logo=amazons3&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B?logo=streamlit&logoColor=white)
 ![SQLite](https://img.shields.io/badge/Auth-SQLite-003B57?logo=sqlite&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-572%20offline-0A9EDC?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-612%20offline-0A9EDC?logo=pytest&logoColor=white)
 
 ![Student chat](docs/screenshots/02-student-chat.png)
 
@@ -43,17 +43,19 @@ Students ask about the college or their *own* record, pay their fees and raise r
 | | |
 |---|---|
 | 🧭 **Cost-aware routing** | A small model (Nova Micro) picks the lightest path: `simple`, `personal` or `deep`. If it fails, a keyword router takes over. |
-| 👤 **Personal answers, private by design** | The `personal` path reads only the signed-in student's record. Guests get a sign-in prompt, and questions about other students are refused before the answer model sees anything. |
+| 👤 **Personal answers, private by design** | The `personal` path reads only the signed-in student's record. Questions about other students are refused before the answer model sees anything, and admins (who have no record) are pointed to the Students page. |
 | 🔎 **Deep research with citations** | Comparisons and multi-step questions go to a planner → researcher loop → writer. Sub-questions are researched in parallel and the report cites its sources. |
-| 🔐 **Real accounts** | Self-registration, email + password sign-in, PBKDF2 hashes in SQLite, login throttling, sessions that survive a refresh, and password reset. |
+| 🔐 **Real accounts** | Self-registration with an emailed verification code, email + password sign-in, PBKDF2 hashes in SQLite, login throttling, sessions that survive a refresh, and password reset. One-time codes are never shown on screen outside demo mode. |
 | 🧑‍💼 **Admin office in one place** | Overview, student records the admin can update (payments, books, attendance, hostel), a request queue, notices and helpdesk insights. Every record change is audit-logged. |
 | 🎫 **Requests, not phone calls** | Students raise requests (certificates, fee issues, hostel, library, exams) and follow the replies; admins work a queue with statuses. |
 | 💳 **Fee payment with receipts** | Students pay their dues in a simulated checkout (no card or bank details are ever asked for) and download receipts. |
 | 📧 **Email notifications** | Students get an email when the admin replies to their request, when a notice for their branch is published, and fee reminders 7 days before the due date and weekly while overdue. Emails go through an outbox: none is queued twice, failed ones are retried (3 attempts) and the admin sees the status of each. |
 | 📢 **Live notices** | A notice the admin publishes is searchable at once, so the assistant can answer about it immediately. |
 | 📈 **Content gaps surfaced** | The Insights page lists the questions the documents could not answer, so the office knows which notice or document to add. No student identity is stored. |
+| 💬 **Follow-up questions** | "aur ECE ka?" after a CSE fee question is understood from the earlier turns and answered as a full question. |
+| 🛡️ **Abuse limits** | A per-account question budget keeps one account from running up the model bill. |
 | 📴 **Works offline** | Demo mode needs no AWS: a keyword (BM25) search over the same documents and an extractive stand-in model, so answers still quote the real data. |
-| 🧪 **Measured, not guessed** | A 45-question developer eval compares the router against an "always deep" baseline; 572 offline tests cover the rest. |
+| 🧪 **Measured, not guessed** | A 45-question developer eval compares the router against an "always deep" baseline; 612 offline tests cover the rest. |
 
 ## 🧑‍🎓 What students and admins can do
 
@@ -65,9 +67,9 @@ Students ask about the college or their *own* record, pay their fees and raise r
 | **Requests** | **My requests**: raise a request, follow the conversation, reply, close it; an email for every admin reply | **Requests**: queue with open / in progress / resolved counts, filters, reply (the student is emailed), change status |
 | **Notices** | Latest notices for their branch on the dashboard and by email; the assistant answers about them | **Notices**: publish (HTML is stripped) and delete; searchable immediately; students of the chosen branches are emailed |
 | **Insights** | – | **Insights**: questions per day and topic, questions the documents could not answer, most asked questions, CSV export |
-| **Account** | Register (new admission or claim an existing ID), sign in, reset or change password | Reset a student's password to a one-time temporary password |
+| **Account** | Register (new admission or claim an existing ID, confirmed with an emailed code), sign in, reset or change password | Reset a student's password to a one-time temporary password |
 
-Rules the app enforces in the backend, not just the UI: a student can only read, pay or raise requests for their **own** record; every admin change to a record is written to an audit log with the admin's email; payments can never exceed what is due.
+Rules the app enforces in the backend, not just the UI: a student can only read, pay or raise requests for their **own** record; every admin change to a record is written to an audit log with the admin's email; payments can never exceed what is due; an account is only created after the code sent to its email comes back.
 
 ## 📸 Screenshots
 
@@ -126,7 +128,7 @@ flowchart TB
         DOCS[("data/college/*.md")]
         NOT[("data/notices.json")]
         STU[("data/students.json")]
-        DB[("SQLite app.db<br/>accounts · sessions · reset codes<br/>requests · record changes · question log")]
+        DB[("SQLite app.db<br/>accounts · sessions · reset and sign-up codes<br/>requests · record changes · question log · email outbox")]
     end
 
     subgraph LIVE ["Live mode (AWS)"]
@@ -174,13 +176,13 @@ flowchart LR
 | Route | When | LLM calls |
 |---|---|---|
 | `simple` | One fact about the college ("What is the library fine per day?") | 2 |
-| `personal` | The student's own data ("Meri fees ka status kya hai?") | 2 (1 for guests) |
+| `personal` | The student's own data ("Meri fees ka status kya hai?") | 2 (1 for admins, who have no record) |
 | `deep` | Comparisons and planning ("Compare CSE and ECE placements") | ~10 |
 
 Details worth knowing:
 
 - **Follow-up questions.** With the last 3 turns of the chat, the router first rewrites a follow-up ("aur ECE ka?") into a standalone question on Nova Micro, and the page shows it as "Understood as". Only questions that look like follow-ups pay for this call; who the question is about is never changed, so the privacy check still sees "my friend's fees".
-- **Bounded cost.** Questions are trimmed to 2,000 characters, blank ones are answered without a model call, and the deep path is capped at 6 sub-questions and 2 extra research loops.
+- **Bounded cost.** Questions are trimmed to 2,000 characters, blank ones are answered without a model call, and the deep path is capped at 6 sub-questions and 2 extra research loops. Each account also has a question budget: 40 units per sliding hour (`SCA_CHAT_UNITS_PER_HOUR`), where a simple or personal answer costs 1 and a deep report 4, so one account cannot run up the model bill.
 - **Money and dates are computed in code.** Late fees, library fines and "days left" are worked out by `student_data.py` and handed to the model as facts, so it never does date math.
 - **Privacy check before the model.** `personal.py` refuses questions that name another student (ID, name, "my friend's fees"). Pronouns that usually mean a *thing* ("the hostel rules and their fees", "exam kab hai aur uski fees") are not mistaken for a person.
 - **Parallel research.** The sub-questions of one loop run on `RESEARCH_WORKERS` threads and are merged back in plan order, so the report is the same as a sequential run.
@@ -188,12 +190,14 @@ Details worth knowing:
 
 ## 🔐 Accounts and security
 
-- **Register:** a *new admission* signs up with any email, picks a branch and category, and gets a new Student ID with a first-year record. An *existing student* claims their account with their Student ID and college email.
+- **Register:** a *new admission* signs up with any email, picks a branch and category, and gets a new Student ID with a first-year record. An *existing student* claims their account with their Student ID and college email. Either way a 6-digit code goes to the email first and the account is created only when it comes back (15-minute expiry, 5 attempts), because a Student ID and a college email are easy to find out. Online sign-up of new admissions can be switched off with `SCA_SELF_REGISTRATION=0`; claiming always works.
 - **Passwords:** PBKDF2-HMAC-SHA256 (600k iterations, per-user salt), stored in SQLite (`data/app.db`, git-ignored). Rules: at least 8 characters, with a letter and a digit.
 - **Login protection:** a generic "invalid email or password" message, timing-safe checks for unknown emails, and a 60 s lockout after 5 failures.
 - **Sessions:** a random token in a `SameSite=Strict` cookie. Only its hash is stored on the server. It expires after 12 h, and logging out or changing the password revokes it.
-- **Forgot password:** a 6-digit code with a 15-minute expiry and at most 5 attempts. It is sent by email when SMTP is configured. In demo mode (no SMTP) the code is shown on screen.
+- **Forgot password:** a 6-digit code with a 15-minute expiry and at most 5 attempts. It is sent by email when SMTP is configured. Only in **demo mode** (synthetic data, no SMTP) is the code shown on screen; in live mode without SMTP no code is ever issued (anyone could otherwise reset any account, the admin's included), so online sign-up is off and the admin office resets passwords.
 - **Privacy:** only the signed-in student's record ever reaches a prompt.
+- **Text input:** HTML tags are stripped from notices, requests and record fields, and every value is escaped when shown. Comparison signs keep their meaning (`attendance < 75%` is stored as `attendance ＜ 75%`).
+- **Times:** stored in UTC, shown and counted per day in the college's time zone (`SCA_TIMEZONE`, default Asia/Kolkata).
 
 ---
 
@@ -208,7 +212,8 @@ Details worth knowing:
 | Offline search | BM25 over the same chunks (`local_search.py`), no dependencies |
 | App | Streamlit (role-based pages, Altair charts) |
 | Accounts | SQLite + standard-library crypto (no extra auth packages) |
-| Quality | pytest (572 offline tests), Ruff, GitHub Actions |
+| Email | SMTP with STARTTLS from the standard library, through an outbox table |
+| Quality | pytest (612 offline tests), Ruff, GitHub Actions |
 
 ## 🚀 Quick start
 
@@ -233,6 +238,9 @@ python -m smart_campus_assistant.ingest   # index docs + notices (--dry-run to j
 streamlit run app.py
 ```
 
+> [!IMPORTANT]
+> With AWS credentials the app runs in **live mode** (also when `SCA_DEMO_MODE` is not set). Live mode never shows one-time codes on screen, so set the `SMTP_*` variables too: without an email server, online sign-up and "Forgot password" are switched off and the admin office has to create accounts and reset passwords.
+
 **Email notifications:** set the `SMTP_*` variables. Replies and notices are emailed right away, in the background. For fee reminders, run this once a day (cron or Windows Task Scheduler), or use **Send fee reminders now** on the admin Overview page:
 ```bash
 python -m smart_campus_assistant.notifications fee-reminders               # as of each record's date
@@ -242,7 +250,7 @@ python -m smart_campus_assistant.notifications deliver                      # se
 Reminders use the same "today" as the student dashboard: a record's `as_of` date when it has one (the synthetic `students.json` is pinned to 2026-11-03, so demo numbers never drift), otherwise the real date. A failed email is retried after 5 and 30 minutes; one interrupted mid-send is picked up again after 15 minutes, so in that rare case a student can get it twice.
 
 > [!TIP]
-> Demo sign-ins are listed in `data/demo_credentials.csv` (git-ignored). You can also register your own student account from the sign-in page.
+> Demo sign-ins are listed in `data/demo_credentials.csv` (git-ignored). You can also register your own student account from the sign-in page; in demo mode the verification code is shown on the page.
 
 ### ☁️ Free public demo (Streamlit Community Cloud)
 
@@ -253,7 +261,7 @@ Reminders use the same "today" as the student dashboard: a record's `as_of` date
    SCA_DEMO_MODE = "1"
    SCA_DEMO_PASSWORD = "campus-demo-2026"
    ```
-   On first start the app creates every demo account with that password, which must be at least 8 characters and contain a letter and a digit.
+   On first start the app creates every demo account with that password, which must be at least 8 characters and contain a letter and a digit. Pick your own: anyone who knows it can sign in to the demo.
 
 > [!WARNING]
 > The free host's disk is temporary. Registrations, sessions, chats and new notices reset when the app restarts.
@@ -276,6 +284,9 @@ Everything is set through environment variables (or `.env`); all have defaults e
 | `SCA_QUESTION_LOG` | on | `0` turns off the question log behind the Insights page |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | – | Email password reset codes and student notifications (otherwise reset codes are shown on screen in demo and notifications are only recorded) |
 | `SCA_EMAIL_NOTIFICATIONS` | on | `0` turns student email notifications off |
+| `SCA_SELF_REGISTRATION` | on | `0` turns off online sign-up of new admissions (existing students can still activate their account) |
+| `SCA_CHAT_UNITS_PER_HOUR` | `40` | Question budget per account per hour (simple/personal = 1, deep = 4); `0` = no limit |
+| `SCA_TIMEZONE` | `Asia/Kolkata` | Time zone for times shown to people and for "per day" counts |
 
 ## 🧪 Tests and model evaluation (developers)
 
@@ -284,7 +295,7 @@ The model evaluation is a development tool, so it is not part of the app. It com
 ```bash
 python eval/run_eval.py          # live: router vs always-deep (route accuracy, tokens, cost, latency)
 python eval/run_eval.py --fake   # offline dry run (free, a few seconds)
-python -m pytest -q              # 572 offline tests (fake LLM, offline search, temp SQLite)
+python -m pytest -q              # 612 offline tests (fake LLM, offline search, temp SQLite)
 ruff check .                     # lint
 ```
 
@@ -304,7 +315,7 @@ ruff check .                     # lint
 
 ---
 
-The tests cover routing, the three answer paths, privacy refusals, late-fee and fine math, accounts and sessions, registration and password reset, notices, support requests (including one student never seeing another's), record changes and their permissions, the question log's privacy masking, every Streamlit page, and edge cases such as blank or oversized questions and concurrent research. GitHub Actions runs the tests and Ruff on every push and pull request.
+The tests cover routing, follow-up rewriting, the three answer paths, privacy refusals, late-fee and fine math, accounts and sessions, sign-up with email verification, password reset (including live mode without an email server), notices, support requests (including one student never seeing another's), record changes and their permissions, email notifications (outbox, retries, reminders), the question budget, the question log's privacy masking, time zones, every Streamlit page, and edge cases such as blank or oversized questions, HTML in text and concurrent research. GitHub Actions runs the tests and Ruff on every push and pull request.
 
 ## 🗂️ Project layout
 
@@ -325,13 +336,15 @@ src/smart_campus_assistant/
   deep_research.py  prompts.py         planner → researcher → writer
   retriever.py  ingest.py              S3 Vectors search and indexing
   local_search.py  fakes.py            offline BM25 search and stand-in model
-  auth.py  db.py  mailer.py            accounts, sessions, reset codes (SQLite)
+  config.py                            settings, demo/live mode, time zone
+  auth.py  db.py  mailer.py            accounts, sessions, reset and sign-up codes (SQLite), SMTP
   student_data.py  notices.py          student records, admin notices
   record_updates.py                    audited record changes and payments
   support_requests.py                  student requests and replies
   question_log.py                      anonymous question log for Insights
   notifications.py                     student emails: outbox, fee reminders, delivery
   followup.py                          follow-up questions rewritten into standalone ones
+  rate_limit.py                        per-account question budget for the chat
   chat_store.py  usage.py              chat history, token and cost tracking (eval)
 eval/                          45 labelled questions + runner (developers only)
 data/college/                  synthetic college documents (see data/sources.md)
@@ -347,7 +360,7 @@ tests/                         offline tests
 - [ ] A real payment gateway (sandbox) behind the Pay fees page
 - [ ] Compute totals (fees, yearly cost) in code instead of in the LLM
 - [ ] Heading-level chunking for long rules (e.g. degree classification)
-- [ ] Email verification on registration
+- [x] Email verification on registration
 - [ ] Persistent storage (Postgres) for the hosted demo
 
 <div align="center">

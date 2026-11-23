@@ -24,10 +24,11 @@ import os
 import re
 import sqlite3
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from smart_campus_assistant import db, student_data
+from smart_campus_assistant.config import local_time, local_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -247,18 +248,19 @@ def summary(path: str | Path | None = None) -> dict:
 
     Returns {"total", "answered", "unanswered", "by_route": {route: n}, "by_topic": {topic: n},
     "by_day": [{"day": "YYYY-MM-DD", "total": n, "unanswered": n}, ...]} where ``by_day`` has one
-    entry for each of the last 14 days (UTC, oldest first, zeros included).
+    entry for each of the last 14 days in the college's time zone (oldest first, zeros included).
     """
     rows = _rows(path)
     total = len(rows)
     answered = sum(1 for r in rows if r["answered"])
     by_route = Counter(r["route"] for r in rows)
     by_topic = Counter(r["topic"] for r in rows)
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(local_timezone()).date()
     days = [(today - timedelta(days=offset)).isoformat() for offset in range(SUMMARY_DAYS - 1, -1, -1)]
     per_day = {day: {"day": day, "total": 0, "unanswered": 0} for day in days}
     for r in rows:
-        entry = per_day.get(str(r["asked_at"])[:10])
+        moment = local_time(r["asked_at"])  # stored in UTC; a question at 01:00 IST counts for that IST day
+        entry = per_day.get(moment.date().isoformat()) if moment else None
         if entry is not None:
             entry["total"] += 1
             entry["unanswered"] += 0 if r["answered"] else 1

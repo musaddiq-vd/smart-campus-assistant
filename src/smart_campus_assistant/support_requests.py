@@ -18,12 +18,12 @@ The ``*_html`` helpers at the bottom are pure string builders shared by the two 
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
 from html import escape
 from pathlib import Path
 from typing import Mapping
 
 from smart_campus_assistant import db
+from smart_campus_assistant.config import local_time
 from smart_campus_assistant.notices import clean_input
 
 CATEGORIES: dict[str, str] = {
@@ -373,11 +373,14 @@ def status_label(status) -> str:
 
 
 def nice_time(stamp) -> str:
-    """``2026-11-03T10:15:00+00:00`` -> ``03 Nov 2026, 10:15 UTC`` (the text itself if it is not a timestamp)."""
-    try:
-        return datetime.fromisoformat(str(stamp)).strftime("%d %b %Y, %H:%M UTC")
-    except (TypeError, ValueError):
+    """``2026-11-03T10:15:00+00:00`` -> ``03 Nov 2026, 15:45 IST`` in the college's time zone.
+
+    The text itself is returned when it is not a timestamp.
+    """
+    moment = local_time(stamp)
+    if moment is None:
         return str(stamp or "")
+    return f"{moment.strftime('%d %b %Y, %H:%M')} {moment.tzname() or ''}".strip()
 
 
 def status_chip_html(status) -> str:

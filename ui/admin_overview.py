@@ -23,6 +23,7 @@ from ui.components import (  # noqa: E402
     get_college_name,
     hero_html,
     kpi_card_html,
+    local_stamp,
     nice_date,
     require_role,
     section_header,
@@ -178,10 +179,10 @@ def render_notifications() -> None:
                 icon=":material/mail:")
     st.button("Send fee reminders now", icon=":material/notifications_active:", on_click=queue_fee_reminders_now,
               key="overview_fee_reminders", disabled=not on)
-    # Same "today" as the dashboards, so reminder amounts always match what students see.
-    st.caption(f"Fee reminders are worked out as of {nice_date(notifications.reminder_date(records[0]))}, "
-               "the date of the student records.")
     try:
+        # Same "today" as the dashboards, so reminder amounts always match what students see.
+        st.caption(f"Fee reminders are worked out as of {nice_date(notifications.reminder_date(records[0]))}, "
+                   "the date of the student records.")
         if on and notifications.due_count():
             notifications.deliver_in_background()  # retry emails that failed earlier or were interrupted
         rows = notifications.recent(20)
@@ -190,7 +191,7 @@ def render_notifications() -> None:
     if rows:
         st.dataframe(
             pd.DataFrame([{
-                "Time": nice_date(r["created_at"][:10]), "Type": notifications.KINDS.get(r["kind"], r["kind"]),
+                "Time": local_stamp(r["created_at"]), "Type": notifications.KINDS.get(r["kind"], r["kind"]),
                 "Student": r["student_id"], "To": r["recipient"], "Subject": r["subject"],
                 "Status": "Waiting to retry" if r["status"] == "pending" and r["attempts"] else r["status"].title(),
                 "Note": r["error"],

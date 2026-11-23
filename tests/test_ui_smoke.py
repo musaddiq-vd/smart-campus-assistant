@@ -156,10 +156,14 @@ def backend(monkeypatch, tmp_path):
     ]
     students_mod.get_student = lambda sid: RECORDS.get(str(sid or "").upper())
     auth_mod = make_auth_module()
-    monkeypatch.setitem(sys.modules, "smart_campus_assistant.graph", graph_mod)
-    monkeypatch.setitem(sys.modules, "smart_campus_assistant.fakes", fakes_mod)
-    monkeypatch.setitem(sys.modules, "smart_campus_assistant.student_data", students_mod)
-    monkeypatch.setitem(sys.modules, "smart_campus_assistant.auth", auth_mod)
+    import smart_campus_assistant as package
+
+    for name, module in (("graph", graph_mod), ("fakes", fakes_mod), ("student_data", students_mod),
+                         ("auth", auth_mod)):
+        monkeypatch.setitem(sys.modules, f"smart_campus_assistant.{name}", module)
+        # "from smart_campus_assistant import fakes" reads the package attribute before sys.modules. Without
+        # this, a real module imported by an earlier test would run here (real fake mode left switched on).
+        monkeypatch.setattr(package, name, module, raising=False)
 
     # Record the pages app.py registers for each run.
     registered: list[list[str]] = []

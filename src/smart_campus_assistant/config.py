@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone, tzinfo
 from functools import lru_cache
 from pathlib import Path
 
@@ -31,6 +32,83 @@ BRANCHES: dict[str, str] = {
     "ME": "Mechanical Engineering",
     "CE": "Civil Engineering",
 }
+
+def _is_placeholder(value: str | None) -> bool:
+    return not value or value.strip().lower().startswith("your_")
+
+
+def has_aws_credentials() -> bool:
+    """Local check only (no network): env vars, the project .env, or an AWS profile on disk."""
+    env = dict(os.environ)
+    try:
+        from dotenv import dotenv_values
+
+        env = {**{k: v for k, v in dotenv_values(PROJECT_ROOT / ".env").items() if v}, **env}
+    except Exception:  # noqa: BLE001
+        pass
+    if not _is_placeholder(env.get("AWS_ACCESS_KEY_ID")) and not _is_placeholder(env.get("AWS_SECRET_ACCESS_KEY")):
+        return True
+    if env.get("AWS_PROFILE"):
+        return True
+    aws_dir = Path(env.get("AWS_SHARED_CREDENTIALS_FILE", Path.home() / ".aws" / "credentials"))
+    try:
+        return aws_dir.is_file() and "aws_access_key_id" in aws_dir.read_text(errors="ignore").lower()
+    except OSError:
+        return False
+
+
+def is_demo_mode() -> bool:
+    """Demo (offline) mode: ``SCA_DEMO_MODE=1`` forces it, ``0`` turns it off, otherwise ON without AWS credentials.
+
+    Demo mode also allows things that are only safe with synthetic data, such as showing a
+    one-time code on screen when no email server is configured.
+    """
+    flag = os.getenv("SCA_DEMO_MODE", "").strip().lower()
+    if flag in ("1", "true", "yes", "on"):
+        return True
+    if flag in ("0", "false", "no", "off"):
+        return False
+    return not has_aws_credentials()
+
+
+DEFAULT_TIMEZONE = "Asia/Kolkata"
+_IST = timezone(timedelta(hours=5, minutes=30), "IST")
+
+
+def local_timezone() -> tzinfo:
+    """The college's time zone (``SCA_TIMEZONE``, default Asia/Kolkata) for dates and times shown to people.
+
+    Timestamps are stored in UTC; this only decides how they are shown and which day they count
+    for. Without the IANA time zone database (Windows without the ``tzdata`` package) India's
+    fixed +05:30 is used, and any other unknown zone falls back to UTC.
+    """
+    name = os.getenv("SCA_TIMEZONE", "").strip() or DEFAULT_TIMEZONE
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(name)
+    except Exception:  # noqa: BLE001  (ZoneInfoNotFoundError, bad name)
+        return _IST if name == DEFAULT_TIMEZONE else timezone.utc
+
+
+def local_time(stamp: object) -> datetime | None:
+    """A stored ISO timestamp in the local time zone (no zone in the text means UTC); None if it is not one."""
+    try:
+        moment = datetime.fromisoformat(str(stamp))
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(local_timezone())
+
+
+def env_flag(name: str, default: bool = True) -> bool:
+    """A yes/no environment setting: "0", "false", "off" or "no" mean False; empty means ``default``."""
+    value = os.getenv(name, "").strip().lower()
+    if not value:
+        return default
+    return value not in ("0", "false", "off", "no")
+
 
 # simple: one fact about the college; deep: comparison / multi-step;
 # personal: the logged-in student's own data (fees, books, attendance, results).

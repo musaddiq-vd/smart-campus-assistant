@@ -35,6 +35,21 @@ def reset_email_body(code: str, minutes: int) -> str:
     )
 
 
+SIGNUP_SUBJECT = "XYZ College helpdesk: your verification code"
+
+
+def signup_email_body(code: str, minutes: int) -> str:
+    """Plain-text sign-up verification email."""
+    return (
+        "Hello,\n\n"
+        "Someone used this email to create an account on the XYZ College helpdesk.\n\n"
+        f"Your verification code is: {code}\n\n"
+        f"Enter it on the sign-up page within {minutes} minutes. "
+        "If this was not you, ignore this email; no account is created without the code.\n\n"
+        "XYZ College of Engineering (fictional demo)\n"
+    )
+
+
 def email_configured() -> bool:
     """True when every SMTP_* variable is set and SMTP_PORT is a number."""
     if not all((os.getenv(name) or "").strip() for name in SMTP_VARS):

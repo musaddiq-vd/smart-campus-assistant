@@ -40,3 +40,31 @@ def _no_emails_from_ui_tests():
         os.environ.pop("SCA_EMAIL_NOTIFICATIONS", None)
     else:
         os.environ["SCA_EMAIL_NOTIFICATIONS"] = previous
+
+
+@pytest.fixture(autouse=True)
+def _offline_demo_mode_by_default():
+    """Tests are offline: run them in demo mode unless a test switches it off itself.
+
+    Without this, a developer machine with AWS credentials would count as live mode, where
+    one-time codes are never shown on screen, and the same tests would pass in CI but fail locally.
+    """
+    previous = os.environ.get("SCA_DEMO_MODE")
+    os.environ["SCA_DEMO_MODE"] = "1"
+    yield
+    if previous is None:
+        os.environ.pop("SCA_DEMO_MODE", None)
+    else:
+        os.environ["SCA_DEMO_MODE"] = previous
+
+
+@pytest.fixture(autouse=True)
+def _no_chat_question_limit_by_default():
+    """The question budget is shared by the whole test process, so it is off unless a test turns it on."""
+    previous = os.environ.get("SCA_CHAT_UNITS_PER_HOUR")
+    os.environ["SCA_CHAT_UNITS_PER_HOUR"] = "0"
+    yield
+    if previous is None:
+        os.environ.pop("SCA_CHAT_UNITS_PER_HOUR", None)
+    else:
+        os.environ["SCA_CHAT_UNITS_PER_HOUR"] = previous

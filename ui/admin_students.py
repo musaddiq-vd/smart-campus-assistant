@@ -19,6 +19,7 @@ from ui.components import (  # noqa: E402
     fee_status_label,
     format_rupees,
     hero_html,
+    local_stamp,
     render_student_dashboard,
     require_role,
     section_header,
@@ -208,8 +209,7 @@ def audit_list_html(rows: list[dict]) -> str:
     for row in rows:
         detail = row.get("detail") or {}
         what = str(detail.get("summary") or str(row.get("action") or "").replace("_", " ").capitalize())
-        when = str(row.get("created_at") or "")[:16].replace("T", " ")
-        meta = f"{when} UTC · {row.get('actor_email', '')} ({row.get('actor_role', '')})"
+        meta = f"{local_stamp(row.get('created_at'))} · {row.get('actor_email', '')} ({row.get('actor_role', '')})"
         items.append(f'<div class="row"><div class="what">{html.escape(what)}</div>'
                      f'<div class="meta">{html.escape(meta)}</div></div>')
     return f'<div class="rec-audit">{"".join(items)}</div>'

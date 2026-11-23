@@ -118,14 +118,25 @@ def get_notice(notice_id: str) -> dict | None:
 
 # ---------- validation ----------
 
-_TAG_RE = re.compile(r"<[^>]*>")
+# A tag starts with "<" right before a letter, "/", "!" or "?" ("<b>", "</p>", "<!-- -->"); "< 75%" is not one.
+_TAG_RE = re.compile(r"<\s*[/!?]?\s*[A-Za-z!?][^<>]*>")
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+# Comparison signs are kept, as look-alikes that can never form HTML: "attendance < 75%" keeps its meaning.
+_COMPARISONS = (("<=", "≤"), (">=", "≥"), ("<", "＜"), (">", "＞"))
 
 
 def clean_input(text, multiline: bool = False) -> str:
-    """Strip HTML-ish tags and control characters; collapse spaces (keep newlines if multiline)."""
+    """Strip HTML tags and control characters; collapse spaces (keep newlines if multiline).
+
+    Tags are removed until none is left (so "<scr<script>ipt>" cannot rebuild one). Any "<" or
+    ">" that is not part of a tag is a comparison and is kept as "≤", "≥", "＜" or "＞".
+    """
     text = html.unescape(str(text or ""))
-    text = _TAG_RE.sub("", text).replace("<", "").replace(">", "")
+    previous = None
+    while previous != text:
+        previous, text = text, _TAG_RE.sub("", text)
+    for sign, look_alike in _COMPARISONS:
+        text = text.replace(sign, look_alike)
     text = _CTRL_RE.sub("", text).replace("\r\n", "\n").replace("\r", "\n")
     if multiline:
         text = re.sub(r"[ \t]+", " ", text)

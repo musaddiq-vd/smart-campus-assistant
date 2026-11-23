@@ -448,7 +448,12 @@ def test_status_chip_html():
     assert "<script>" not in sr.status_chip_html('"><script>')
 
 
-def test_nice_time():
+def test_nice_time_is_in_the_college_time_zone(monkeypatch):
+    monkeypatch.delenv("SCA_TIMEZONE", raising=False)
+    assert sr.nice_time("2026-11-03T10:15:00+00:00") == "03 Nov 2026, 15:45 IST"  # stored UTC, shown in IST
+    assert sr.nice_time("2026-11-03T20:00:00+00:00") == "04 Nov 2026, 01:30 IST"  # the next day in India
+    assert sr.nice_time("2026-11-03T10:15:00") == "03 Nov 2026, 15:45 IST"  # no zone in the text means UTC
+    monkeypatch.setenv("SCA_TIMEZONE", "UTC")
     assert sr.nice_time("2026-11-03T10:15:00+00:00") == "03 Nov 2026, 10:15 UTC"
     assert sr.nice_time(None) == ""
     assert sr.nice_time("soon") == "soon"
@@ -463,7 +468,7 @@ def test_request_card_html_escapes_and_shows_student_only_for_admins():
     card = sr.request_card_html(request)
     assert "<script>" not in card and "&lt;script&gt;alert(1)&lt;/script&gt;" in card
     assert 'class="sca-req resolved"' in card and "Resolved" in card
-    assert "R-2026-0007 · Hostel · raised 03 Nov 2026, 10:15 UTC · updated 04 Nov 2026, 09:00 UTC" in card
+    assert "R-2026-0007 · Hostel · raised 03 Nov 2026, 15:45 IST · updated 04 Nov 2026, 14:30 IST" in card
     assert "XYZ24CSE001" not in card and "a@xyz.example" not in card
     admin_card = sr.request_card_html(request, show_student=True)
     assert "A &lt;b&gt;Sharma&lt;/b&gt; · XYZ24CSE001 · a@xyz.example" in admin_card

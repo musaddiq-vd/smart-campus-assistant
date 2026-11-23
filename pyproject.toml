@@ -9,15 +9,16 @@ description = "Cost-aware AI student helpdesk: a router sends each question to f
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "langgraph>=1.0",
-    "langchain-core",
-    "langchain-aws",
-    "langchain-text-splitters",
-    "boto3",
-    "python-dotenv",
-    "streamlit>=1.50",
-    "pandas",
-    "altair",
+    "langgraph>=1.2,<2",
+    "langchain-core>=1.8,<2",
+    "langchain-aws>=1.10,<2",
+    "langchain-text-splitters>=1.1,<2",
+    "boto3>=1.44,<2",
+    "python-dotenv>=1.2,<2",
+    "streamlit>=1.67,<2",
+    "pandas>=3.1,<4",
+    "altair>=6.3,<7",
+    "tzdata>=2025.1",
 ]
 
 [project.optional-dependencies]

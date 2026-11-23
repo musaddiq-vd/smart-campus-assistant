@@ -237,7 +237,17 @@ def reminder_date(record: Mapping | None) -> date:
     This is the same date the student dashboard and the assistant use, so an email never shows
     other amounts than the app.
     """
-    return student_data._date((record or {}).get("as_of")) or date.today()  # noqa: SLF001  (shared parser)
+    return _parse_date((record or {}).get("as_of")) or date.today()
+
+
+def _parse_date(value: object) -> date | None:
+    """A YYYY-MM-DD date (or a datetime string starting with one); None when missing or invalid."""
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value or "")[:10])
+    except ValueError:
+        return None
 
 
 def fee_reminder(record: Mapping, today: date | None = None) -> tuple[str, str, str] | None:
@@ -250,7 +260,7 @@ def fee_reminder(record: Mapping, today: date | None = None) -> tuple[str, str, 
         due = int(round(float(fees.get("due") or 0)))
     except (TypeError, ValueError):
         return None
-    due_date = student_data._date(fees.get("due_date"))  # noqa: SLF001
+    due_date = _parse_date(fees.get("due_date"))
     today = today or reminder_date(record)
     if due <= 0 or due_date is None:
         return None
@@ -276,7 +286,8 @@ def fee_reminder(record: Mapping, today: date | None = None) -> tuple[str, str, 
             f"Amount due: {_rupees(due)}\nLate fee so far: {_rupees(late['late_fee'])}\n"
             f"Total payable now: {_rupees(late['total_payable'])}\n\n"
             "Students with dues pending for a long time may not get their exam hall ticket. "
-            "You can pay on the Pay fees page of the helpdesk, or raise a request if something is wrong."
+            f"You can pay the {_rupees(due)} due on the Pay fees page of the helpdesk; the late fee is settled "
+            "at the accounts office. Raise a request in the helpdesk if something is wrong."
             + SIGN_OFF
         )
         return (f"overdue:{semester}:w{week}",

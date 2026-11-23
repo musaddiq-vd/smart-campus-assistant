@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
 from ui.components import (  # noqa: E402
     as_of_date,
     days_text,
+    effective_fee_status,
     empty_state,
     fee_status_label,
     format_rupees,
@@ -154,7 +155,7 @@ except Exception:  # noqa: BLE001
     st.error("Payments are not available right now. Please try again later.", icon=":material/error:")
     st.stop()
 
-status = str(fees.get("status") or "").lower()
+status = effective_fee_status(fees, today)  # the same status the dashboard and the assistant show
 overdue = status == "overdue" or late["days_overdue"] > 0
 if due:
     due_sub = f"{fee_status_label(status)} · {fees.get('semester', '')}".strip(" ·")

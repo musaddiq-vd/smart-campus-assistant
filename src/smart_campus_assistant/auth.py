@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Callable, Literal, TypedDict
 
 from smart_campus_assistant import db, mailer, student_data
-from smart_campus_assistant.config import BRANCHES, get_settings
+from smart_campus_assistant.config import BRANCHES, env_flag, get_settings, is_demo_mode
 
 log = logging.getLogger(__name__)
 
@@ -383,19 +383,13 @@ def admin_reset_password(email: str, by_admin_email: str, path: str | Path | Non
 # ---------------------------------------------------------------- self-registration and claiming
 
 
-def register_new_student(
-    name: str,
-    email: str,
-    password: str,
-    branch: str,
-    category: str = "General",
-    hostel: bool = False,
-    path: str | Path | None = None,
-) -> User:
-    """Admit a NEW first-year student: creates the student record and the account together.
+EMAIL_TAKEN = "An account with this email already exists. Sign in or reset your password."
+CLAIM_TAKEN = "An account already exists for this student. Sign in, or use 'Forgot password'."
 
-    Raises ValueError with a message that is safe to show to the user.
-    """
+
+def _validate_new_admission(name: str, email: str, password: str, branch: str, category: str,
+                            path: str | Path | None) -> dict:
+    """Cleaned {"name", "email", "branch", "category"} for a new admission; ValueError (safe to show) otherwise."""
     name = " ".join(str(name or "").split())
     if not NAME_MIN <= len(name) <= NAME_MAX:
         raise ValueError(f"Name must be {NAME_MIN} to {NAME_MAX} characters.")
@@ -408,46 +402,216 @@ def register_new_student(
     matches = [c for c in STUDENT_CATEGORIES if c.lower() == str(category or "").strip().lower()]
     if not matches:
         raise ValueError(f"Choose a valid category ({', '.join(STUDENT_CATEGORIES)}).")
-    category = matches[0]
     _require_strong(password)
     if student_data.find_student_by_email(email, db_path=path):
         raise ValueError(
             "This email already belongs to a student record. Existing students should claim their account instead."
         )
-    password_hash = hash_password(password)
+    with db.reading(path) as conn:
+        if conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
+            raise ValueError(EMAIL_TAKEN)
+    return {"name": name, "email": email, "branch": branch, "category": matches[0]}
+
+
+def _create_new_admission(fields: dict, hostel: bool, password_hash: str, path: str | Path | None) -> User:
+    """Create the student record and the account in one transaction (duplicates re-checked inside it)."""
+    name, email = fields["name"], fields["email"]
     with db.transaction(path) as conn:
         if conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone() or conn.execute(
             "SELECT 1 FROM students WHERE email = ?", (email,)
         ).fetchone():
-            raise ValueError("An account with this email already exists. Sign in or reset your password.")
+            raise ValueError(EMAIL_TAKEN)
         record = student_data.create_student_record(
-            name, email, branch, category, bool(hostel), db_path=path, conn=conn
+            name, email, fields["branch"], fields["category"], bool(hostel), db_path=path, conn=conn
         )
         student_data.save_student_record(conn, record)
         _insert_user(conn, email, "student", name, record["student_id"], password_hash)
     return _public({"email": email, "role": "student", "name": name, "student_id": record["student_id"]})
 
 
-def claim_student_account(student_id: str, college_email: str, password: str, path: str | Path | None = None) -> User:
-    """Create the account of an EXISTING student (in the college records) who has none yet.
+def register_new_student(
+    name: str,
+    email: str,
+    password: str,
+    branch: str,
+    category: str = "General",
+    hostel: bool = False,
+    path: str | Path | None = None,
+) -> User:
+    """Admit a NEW first-year student at once: creates the student record and the account together.
 
-    The student id and the college email must both match one record. Unknown ids and
-    mismatches get the same generic error. The account email is the record's email.
+    The sign-in page uses ``start_new_admission`` + ``complete_signup`` instead, which first
+    proves that the person owns the email. Raises ValueError with a message that is safe to show.
     """
-    _require_strong(password)
+    fields = _validate_new_admission(name, email, password, branch, category, path)
+    return _create_new_admission(fields, hostel, hash_password(password), path)
+
+
+def _check_claim(student_id: str, college_email: str, path: str | Path | None) -> tuple[str, str, str]:
+    """(student id, record email, name) when the claim matches a record without an account; ValueError otherwise."""
     sid = student_data.normalize_id(student_id)
     email = normalize_email(college_email)
     record = student_data.get_student(sid, db_path=path) if sid else None
     record_email = normalize_email((record or {}).get("email"))
     if not record or not email or not hmac.compare_digest(record_email.encode(), email.encode()):
         raise ValueError(CLAIM_MISMATCH)
-    password_hash = hash_password(password)
-    name = str(record.get("name", "")).strip()
+    with db.reading(path) as conn:
+        if conn.execute("SELECT 1 FROM users WHERE email = ? OR student_id = ?", (record_email, sid)).fetchone():
+            raise ValueError(CLAIM_TAKEN)
+    return sid, record_email, str(record.get("name", "")).strip()
+
+
+def _create_claimed_account(sid: str, record_email: str, name: str, password_hash: str,
+                            path: str | Path | None) -> User:
     with db.transaction(path) as conn:
         if conn.execute("SELECT 1 FROM users WHERE email = ? OR student_id = ?", (record_email, sid)).fetchone():
-            raise ValueError("An account already exists for this student. Sign in, or use 'Forgot password'.")
+            raise ValueError(CLAIM_TAKEN)
         _insert_user(conn, record_email, "student", name, sid, password_hash)
     return _public({"email": record_email, "role": "student", "name": name, "student_id": sid})
+
+
+def claim_student_account(student_id: str, college_email: str, password: str, path: str | Path | None = None) -> User:
+    """Create the account of an EXISTING student (in the college records) who has none yet, at once.
+
+    The student id and the college email must both match one record. Unknown ids and
+    mismatches get the same generic error. The account email is the record's email. The
+    sign-in page uses ``start_account_claim`` + ``complete_signup`` instead (email verified first).
+    """
+    _require_strong(password)
+    sid, record_email, name = _check_claim(student_id, college_email, path)
+    return _create_claimed_account(sid, record_email, name, hash_password(password), path)
+
+
+# ---------------------------------------------------------------- sign-up with email verification
+#
+# Knowing a Student ID and a college email is not proof of being that student: both are easy to
+# find out. So the sign-in page first sends a 6-digit code to the email and creates the account
+# only when the code comes back. Until then the request waits in ``pending_signups`` (password
+# as a hash only); it expires after 15 minutes and allows 5 code attempts.
+
+SIGNUP_CODE_TTL_SECONDS = 15 * 60
+SIGNUP_MAX_ATTEMPTS = 5
+SIGNUP_MIN_INTERVAL_SECONDS = 60
+SIGNUP_UNAVAILABLE = ("Online sign-up needs email verification, which is not set up on this server. "
+                      "Please contact the admin office to get your account.")
+SELF_REGISTRATION_OFF = ("New admissions are registered by the admissions office. "
+                         "If you already have a Student ID, activate your account instead.")
+SIGNUP_WRONG_CODE = "That code is wrong or has expired. Check it or start again to get a new one."
+SIGNUP_TOO_MANY = "Too many wrong codes. Start again to get a new code."
+SIGNUP_SEND_FAILED = "We could not send the verification email. Please try again in a minute."
+
+
+def self_registration_enabled() -> bool:
+    """New admissions may sign up online unless ``SCA_SELF_REGISTRATION=0`` (claiming an account always works)."""
+    return env_flag("SCA_SELF_REGISTRATION", True)
+
+
+def _start_signup(email: str, kind: str, payload: dict, path: str | Path | None, now: float | None) -> dict:
+    """Store a pending sign-up and send its code; returns {"delivery", "code", "email", "throttled"}."""
+    now = time.time() if now is None else now
+    delivery = code_delivery()
+    code = f"{secrets.randbelow(10**6):06d}"
+    code_hash = _hash_secret(code)
+    with db.transaction(path) as conn:
+        conn.execute("DELETE FROM pending_signups WHERE expires <= ?", (now,))
+        row = conn.execute("SELECT created_at FROM pending_signups WHERE email = ?", (email,)).fetchone()
+        if row and now - row["created_at"] < SIGNUP_MIN_INTERVAL_SECONDS:
+            # Too soon for a new code: the one sent a moment ago is still valid.
+            return {"delivery": delivery, "code": None, "email": email, "throttled": True}
+        conn.execute(
+            "INSERT OR REPLACE INTO pending_signups (email, kind, payload_json, code_hash, expires, attempts, created_at)"
+            " VALUES (?, ?, ?, ?, ?, 0, ?)",
+            (email, kind, json.dumps(payload), code_hash, now + SIGNUP_CODE_TTL_SECONDS, now),
+        )
+    if delivery == "email":
+        body = mailer.signup_email_body(code, SIGNUP_CODE_TTL_SECONDS // 60)
+        if not mailer.send_email(email, mailer.SIGNUP_SUBJECT, body):
+            with db.transaction(path) as conn:  # let the user try again at once
+                conn.execute("DELETE FROM pending_signups WHERE email = ? AND code_hash = ?", (email, code_hash))
+            raise ValueError(SIGNUP_SEND_FAILED)
+        return {"delivery": "email", "code": None, "email": email, "throttled": False}
+    return {"delivery": "screen", "code": code, "email": email, "throttled": False}
+
+
+def start_new_admission(
+    name: str,
+    email: str,
+    password: str,
+    branch: str,
+    category: str = "General",
+    hostel: bool = False,
+    path: str | Path | None = None,
+    now: float | None = None,
+) -> dict:
+    """Step 1 of a new admission: validate everything, then send a code to the email.
+
+    Returns {"delivery": "email" | "screen", "code": str | None, "email", "throttled"}; the
+    code is only returned in demo mode ("screen"). Raises ValueError (safe to show) for bad
+    input, when self-registration is off, or when codes cannot be delivered.
+    """
+    if not self_registration_enabled():
+        raise ValueError(SELF_REGISTRATION_OFF)
+    if code_delivery() == "unavailable":
+        raise ValueError(SIGNUP_UNAVAILABLE)
+    fields = _validate_new_admission(name, email, password, branch, category, path)
+    payload = {**fields, "hostel": bool(hostel), "password_hash": hash_password(password)}
+    return _start_signup(fields["email"], "new_admission", payload, path, now)
+
+
+def start_account_claim(
+    student_id: str, college_email: str, password: str, path: str | Path | None = None, now: float | None = None
+) -> dict:
+    """Step 1 of activating an existing student's account: check the claim, then send a code to the college email.
+
+    Same return value and errors as ``start_new_admission``; a mismatch is the generic CLAIM_MISMATCH.
+    """
+    if code_delivery() == "unavailable":
+        raise ValueError(SIGNUP_UNAVAILABLE)
+    _require_strong(password)
+    sid, record_email, _ = _check_claim(student_id, college_email, path)
+    payload = {"student_id": sid, "password_hash": hash_password(password)}
+    return _start_signup(record_email, "claim", payload, path, now)
+
+
+def complete_signup(email: str, code: str, path: str | Path | None = None, now: float | None = None) -> User:
+    """Step 2: create the account if ``code`` is right; returns the new User.
+
+    Raises ValueError (safe to show) for a wrong, expired or used-up code, or when the email or
+    student got an account in the meantime. The pending sign-up is deleted on success.
+    """
+    now = time.time() if now is None else now
+    email = normalize_email(email)
+    code = re.sub(r"\s+", "", str(code or ""))
+    # Errors are raised only after the transaction: raising inside it would roll back the delete
+    # of an expired code and the attempt counter.
+    problem = None
+    with db.transaction(path) as conn:
+        row = conn.execute("SELECT * FROM pending_signups WHERE email = ?", (email,)).fetchone()
+        if row is None:
+            problem = SIGNUP_WRONG_CODE
+        elif row["expires"] <= now:
+            conn.execute("DELETE FROM pending_signups WHERE email = ?", (email,))
+            problem = SIGNUP_WRONG_CODE
+        elif row["attempts"] >= SIGNUP_MAX_ATTEMPTS:
+            problem = SIGNUP_TOO_MANY
+        else:
+            conn.execute("UPDATE pending_signups SET attempts = attempts + 1 WHERE email = ?", (email,))
+            pending = dict(row)
+    if problem:
+        raise ValueError(problem)
+    # PBKDF2 is slow, so the code is checked outside the write lock (constant-time compare).
+    if not (len(code) == 6 and code.isdigit() and verify_password(code, pending["code_hash"])):
+        raise ValueError(SIGNUP_WRONG_CODE)
+    with db.transaction(path) as conn:
+        cur = conn.execute("DELETE FROM pending_signups WHERE email = ? AND code_hash = ?",
+                           (email, pending["code_hash"]))
+        if cur.rowcount == 0:
+            raise ValueError(SIGNUP_WRONG_CODE)  # replaced or used meanwhile
+    payload = json.loads(pending["payload_json"])
+    if pending["kind"] == "new_admission":
+        return _create_new_admission(payload, payload.get("hostel", False), payload["password_hash"], path)
+    sid, record_email, name = _check_claim(payload["student_id"], email, path)
+    return _create_claimed_account(sid, record_email, name, payload["password_hash"], path)
 
 
 # ---------------------------------------------------------------- password reset
@@ -457,21 +621,40 @@ RESET_MAX_ATTEMPTS = 5
 RESET_MIN_INTERVAL_SECONDS = 60
 
 
+def code_delivery() -> Literal["email", "screen", "unavailable"]:
+    """How one-time codes (password reset, sign-up verification) reach the user.
+
+    - "email": SMTP is configured (mailer.py).
+    - "screen": no SMTP, but the app runs in demo mode with synthetic data, so the code may be
+      shown on the page.
+    - "unavailable": live mode without SMTP. Showing the code there would let anyone take over
+      any account (including the admin's) by typing its email, so codes are not issued at all.
+    """
+    if mailer.email_configured():
+        return "email"
+    return "screen" if is_demo_mode() else "unavailable"
+
+
 def request_password_reset(email: str, path: str | Path | None = None, now: float | None = None) -> dict:
-    """Start a password reset; returns {"delivery": "email" | "screen" | "none", "code": str | None}.
+    """Start a password reset; returns {"delivery": "email" | "screen" | "none" | "unavailable", "code": str | None}.
 
     - SMTP configured (see mailer.py): the code is emailed and the result is ALWAYS
       {"delivery": "email", "code": None}, for known, unknown and rate-limited emails alike.
-    - No SMTP (DEMO ONLY): a known account gets {"delivery": "screen", "code": "123456"} so the
+    - No SMTP in DEMO mode: a known account gets {"delivery": "screen", "code": "123456"} so the
       demo UI can show the code; unknown emails and rate-limited requests get
-      {"delivery": "none", "code": None}. Never deploy screen delivery with real users.
+      {"delivery": "none", "code": None}.
+    - No SMTP in live mode: always {"delivery": "unavailable", "code": None} and nothing is
+      stored; the admin office resets passwords instead (``admin_reset_password``).
 
     Only a hash of the 6-digit code is stored; it expires after 15 minutes, allows 5 attempts,
     a new request replaces the old code, and one request per email per 60 s is accepted.
     """
     now = time.time() if now is None else now
     email = normalize_email(email)
-    use_email = mailer.email_configured()
+    delivery = code_delivery()
+    if delivery == "unavailable":
+        return {"delivery": "unavailable", "code": None}
+    use_email = delivery == "email"
     generic = {"delivery": "email" if use_email else "none", "code": None}
     if not valid_email(email):
         return generic

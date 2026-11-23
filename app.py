@@ -16,6 +16,7 @@ Demo (offline fake) mode is automatic: it is ON when no AWS credentials are foun
 
 from __future__ import annotations
 
+import logging
 import sys
 from html import escape
 from pathlib import Path
@@ -23,6 +24,12 @@ from pathlib import Path
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parent
+
+# The app's own warnings (emails that failed, logging that failed, bad settings) go to the server
+# log with a time stamp. Streamlit configures only its own loggers, so set up the root one once.
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("smart_campus_assistant").setLevel(logging.INFO)
 # src/ is on the path so hosts that only `pip install -r requirements.txt`
 # (e.g. Streamlit Community Cloud) can import the package without installing it.
 for path in (ROOT / "src", ROOT):

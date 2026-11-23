@@ -7,7 +7,6 @@ functions without the suffix render them with ``st.markdown``.
 from __future__ import annotations
 
 import math
-import os
 from datetime import date
 from html import escape
 from pathlib import Path
@@ -133,34 +132,17 @@ def student_label(student: Mapping) -> str:
 
 
 def is_demo_mode() -> bool:
-    """Demo (fake) mode is automatic: ``SCA_DEMO_MODE=1`` forces it, otherwise ON only without AWS credentials."""
-    flag = os.getenv("SCA_DEMO_MODE", "").strip().lower()
-    if flag in ("1", "true", "yes", "on"):
-        return True
-    if flag in ("0", "false", "no", "off"):
-        return False
-    return not has_aws_credentials()
+    """Demo (offline) mode; the one rule lives in the backend config so auth and the UI agree."""
+    from smart_campus_assistant.config import is_demo_mode as backend_is_demo_mode
 
-
-def _is_placeholder(value: str | None) -> bool:
-    return not value or value.strip().lower().startswith("your_")
+    return backend_is_demo_mode()
 
 
 def has_aws_credentials() -> bool:
-    """Local check only (no network): env vars, the project .env, or an AWS profile on disk."""
-    env = dict(os.environ)
-    try:
-        from dotenv import dotenv_values
+    """Local check only (no network); see ``smart_campus_assistant.config.has_aws_credentials``."""
+    from smart_campus_assistant.config import has_aws_credentials as backend_has_aws_credentials
 
-        env = {**{k: v for k, v in dotenv_values(PROJECT_ROOT / ".env").items() if v}, **env}
-    except Exception:
-        pass
-    if not _is_placeholder(env.get("AWS_ACCESS_KEY_ID")) and not _is_placeholder(env.get("AWS_SECRET_ACCESS_KEY")):
-        return True
-    if env.get("AWS_PROFILE"):
-        return True
-    aws_dir = Path(env.get("AWS_SHARED_CREDENTIALS_FILE", Path.home() / ".aws" / "credentials"))
-    return aws_dir.is_file() and "aws_access_key_id" in aws_dir.read_text(errors="ignore").lower()
+    return backend_has_aws_credentials()
 
 
 # ---------- HTML builders ----------
@@ -338,7 +320,7 @@ def status_chips(record: Mapping | None) -> list[tuple[str, str, str]]:
     chips = []
     fees = record.get("fees") or {}
     if fees:
-        status = str(fees.get("status") or "").lower()
+        status = effective_fee_status(fees, as_of_date(record))
         due = fees.get("due") or 0
         if status == "overdue":
             chips.append(("Fees", f"Overdue {format_rupees(due)}", "bad"))
@@ -502,12 +484,17 @@ FEE_STATUS_LABELS = {
 }
 
 
-def effective_fee_status(fees: Mapping) -> str:
-    """Status to display: a not-overdue bill with nothing paid yet (new admission) reads "unpaid"."""
-    status = str((fees or {}).get("status") or "").lower()
-    if status == "partially_paid" and not (fees or {}).get("paid") and (fees or {}).get("due"):
-        return "unpaid"
-    return status
+def effective_fee_status(fees: Mapping, today: date | None = None) -> str:
+    """Status to display, by the backend's one rule (``student_data.fee_status``) so pages and the assistant agree."""
+    try:
+        from smart_campus_assistant.student_data import fee_status
+
+        return fee_status(dict(fees or {}), today)
+    except Exception:  # noqa: BLE001  (backend missing or stubbed: the stored status)
+        status = str((fees or {}).get("status") or "").lower()
+        if status == "partially_paid" and not (fees or {}).get("paid") and (fees or {}).get("due"):
+            return "unpaid"
+        return status
 
 
 def all_records_safe() -> list[dict]:
@@ -576,7 +563,7 @@ def student_flags(record: Mapping) -> dict:
     attendance = (record.get("attendance") or {}).get("overall_pct")
     books = library.get("books_issued") or []
     return {
-        "fee_status": effective_fee_status(fees),
+        "fee_status": effective_fee_status(fees, today),
         "fees_due": float(fees.get("due") or 0),
         "fees_paid": float(fees.get("paid") or 0),
         "overdue_books": sum(1 for b in books if isinstance(b, Mapping) and book_is_overdue(b, today)),
@@ -891,3 +878,16 @@ def email_note(what: str) -> str:
     if configured:
         return f" {what} queued for email (status on the Overview page)."
     return f" {what} recorded in the outbox but not sent (email/SMTP is not configured)."
+
+
+def local_stamp(stamp) -> str:
+    """A stored UTC timestamp as "03 Nov 2026, 15:45 IST" in the college's time zone (the text itself otherwise)."""
+    try:
+        from smart_campus_assistant.config import local_time
+
+        moment = local_time(stamp)
+    except Exception:  # noqa: BLE001
+        moment = None
+    if moment is None:
+        return str(stamp or "")
+    return f"{moment.strftime('%d %b %Y, %H:%M')} {moment.tzname() or ''}".strip()

@@ -13,7 +13,7 @@ data/app.db
 data/app.db-*
 data/demo_credentials.csv
 
-# Local notes for Claude (keep off GitHub)
+# Local assistant notes (keep off GitHub)
 CLAUDE.md
 
 # Large source PDFs (download again from official sites)

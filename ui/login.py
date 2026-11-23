@@ -2,8 +2,12 @@
 
 - Sign in: Student / Admin toggle, email + password, lockout after repeated failures.
 - Register (students only): a new admission gets a new Student ID; an existing student
-  claims an account with their Student ID + college email. Success signs the user in.
+  claims an account with their Student ID + college email. Either way a 6-digit code is
+  sent to the email first, and the account is created (and signed in) only when the code
+  comes back. Self-registration of new admissions can be switched off (SCA_SELF_REGISTRATION=0).
 - Forgot password: request a 6-digit code by email, then set a new password with it.
+  In demo mode without an email server the code is shown on the page; in live mode without
+  one, codes are never issued and the admin office resets passwords instead.
 
 Passwords are read once inside submit callbacks and then wiped from session state;
 they are never displayed, logged or stored. Only the public User dict lands in
@@ -34,6 +38,9 @@ REGISTER_FAILED = "Registration failed. Please check your details and try again.
 RESET_SENT = "If an account exists for that email, we sent a 6-digit code."
 WRONG_CODE = "That code is wrong or has expired. Check it or request a new one."
 RESET_DONE = "Password changed. Sign in with your new password."
+RESET_UNAVAILABLE = ("Password reset by email is not set up on this server. "
+                     "Please ask the admin office to reset your password.")
+SIGNUP_CODE_WRONG = "That code is wrong or has expired."
 RESEND_AFTER = 60  # seconds before another code can be requested
 REG_LIMIT = 5  # registration attempts per browser session ...
 REG_WINDOW = 600  # ... within this many seconds
@@ -283,38 +290,125 @@ def _register() -> None:
         return fail(f"Too many registration attempts. Try again in {math.ceil(wait / 60)} min.")
     st.session_state["reg_attempts"].append(time.time())
 
+    branch = str(st.session_state.get("reg_branch") or "CSE")
+    category = str(st.session_state.get("reg_category") or "General")
+    hostel = st.session_state.get("reg_hostel") == "Yes"
+    # Backends with email verification first send a code; the account is created in _verify_signup.
+    starter = getattr(auth, "start_new_admission" if new_admission else "start_account_claim", None)
+    verified = callable(starter) and callable(getattr(auth, "complete_signup", None))
+    # Messages that say nothing about whether a student or an account exists, so they are safe to show.
+    shareable = {getattr(auth, name, None) for name in ("SIGNUP_UNAVAILABLE", "SIGNUP_SEND_FAILED")} - {None}
     try:
-        if new_admission:
-            user = auth.register_new_student(
-                name, email, password,
-                str(st.session_state.get("reg_branch") or "CSE"),
-                category=str(st.session_state.get("reg_category") or "General"),
-                hostel=st.session_state.get("reg_hostel") == "Yes",
-            )
+        if verified:
+            if new_admission:
+                result = starter(name, email, password, branch, category=category, hostel=hostel)
+            else:
+                result = starter(student_id, email, password)
+        elif new_admission:
+            user = auth.register_new_student(name, email, password, branch, category=category, hostel=hostel)
         else:
             user = auth.claim_student_account(student_id, email, password)
     except ValueError as exc:
-        return fail(str(exc) if new_admission else CLAIM_FAILED)
+        return fail(str(exc) if new_admission or str(exc) in shareable else CLAIM_FAILED)
     except Exception:  # noqa: BLE001
         return fail(REGISTER_FAILED if new_admission else CLAIM_FAILED)
     finally:
         password = confirm = ""
 
-    start_session(auth, user, email.lower())
+    if verified:
+        result = result or {}
+        st.session_state["reg_pending"] = {"email": str(result.get("email") or email.lower()),
+                                           "new_admission": new_admission}
+        if result.get("code"):
+            st.session_state["reg_demo_code"] = str(result["code"])
+        if not result.get("throttled"):
+            st.session_state["reg_sent_at"] = time.time()
+        st.session_state.pop("reg_code", None)
+        return
+    _finish_signup(auth, user, email.lower(), new_admission)
+
+
+def _finish_signup(auth, user, email: str, new_admission: bool) -> None:
+    start_session(auth, user, email)
     sid = user.get("student_id") or ""
     if new_admission:
         st.session_state["welcome_toast"] = f"Welcome! Your new Student ID is {sid}."
     else:
         st.session_state["welcome_toast"] = f"Account created for {sid}. Welcome!"
-    for k in ("reg_name", "reg_email", "claim_sid", "claim_email", "reg_error"):
+    for k in ("reg_name", "reg_email", "claim_sid", "claim_email", "reg_error", "reg_pending", "reg_demo_code",
+              "reg_sent_at", "reg_code"):
         st.session_state.pop(k, None)
+
+
+def _verify_signup() -> None:
+    """Submit callback of the code step: create the account when the emailed code is right."""
+    pending = st.session_state.get("reg_pending") or {}
+    code = str(st.session_state.get("reg_code") or "").strip()
+    st.session_state.pop("reg_error", None)
+    auth, _ = load_auth()
+    if auth is None:
+        try:
+            auth = importlib.import_module("smart_campus_assistant.auth")
+        except Exception:  # noqa: BLE001
+            st.session_state["reg_error"] = REGISTER_FAILED
+            return
+    if not code:
+        st.session_state["reg_error"] = "Enter the 6-digit code."
+        return
+    try:
+        user = auth.complete_signup(pending.get("email", ""), code)
+    except ValueError as exc:
+        st.session_state["reg_code"] = ""
+        st.session_state["reg_error"] = str(exc) or SIGNUP_CODE_WRONG
+        return
+    except Exception:  # noqa: BLE001
+        st.session_state["reg_error"] = REGISTER_FAILED
+        return
+    _finish_signup(auth, user, pending.get("email", ""), bool(pending.get("new_admission")))
+
+
+def _restart_signup() -> None:
+    wipe_passwords()
+    for k in ("reg_pending", "reg_demo_code", "reg_sent_at", "reg_code", "reg_error"):
+        st.session_state.pop(k, None)
+
+
+def _render_signup_code() -> None:
+    pending = st.session_state.get("reg_pending") or {}
+    st.info(f"We sent a 6-digit code to {pending.get('email', 'your email')}. Enter it to finish creating "
+            "your account. The code is valid for 15 minutes.", icon=":material/mark_email_read:")
+    code = st.session_state.get("reg_demo_code")
+    if code:
+        st.markdown(
+            '<div class="sca-demo-code"><div class="lbl">Demo mode · no email server configured</div>'
+            f'<div class="code">{escape(code)}</div>'
+            '<div class="hint">In a real deployment this code arrives by email.</div></div>',
+            unsafe_allow_html=True,
+        )
+    with st.form("reg_code_form", border=False, enter_to_submit=True):
+        st.text_input("6-digit code", key="reg_code", max_chars=6, autocomplete="one-time-code")
+        st.form_submit_button("Verify and create account", type="primary", width="stretch", on_click=_verify_signup,
+                              icon=":material/verified:", key="reg_verify")
+    st.button("Start again (new code)", on_click=_restart_signup, key="reg_restart", width="stretch")
+    error = st.session_state.get("reg_error")
+    if error:
+        st.error(error, icon=":material/error:")
 
 
 def _render_register(auth) -> None:
     st.markdown('<div class="sca-login-sub">Student registration</div>', unsafe_allow_html=True)
-    mode = st.segmented_control("Registration type", REG_MODES, default=REG_MODES[0], key="reg_mode",
+    if st.session_state.get("reg_pending"):
+        _render_signup_code()
+        return
+    allowed = getattr(auth, "self_registration_enabled", None)
+    modes = list(REG_MODES) if not callable(allowed) or allowed() else [REG_MODES[1]]
+    if st.session_state.get("reg_mode") not in modes:
+        st.session_state["reg_mode"] = modes[0]
+    mode = st.segmented_control("Registration type", modes, default=modes[0], key="reg_mode",
                                 required=True, width="stretch", label_visibility="collapsed",
                                 on_change=_on_view_change)
+    if len(modes) == 1:
+        st.caption("New admissions are registered by the admissions office.")
     # A form sends every field together on submit. Outside a form a password field is only saved
     # when it loses focus to another widget, and pressing Tab moves focus to its own "show password"
     # icon instead, so keyboard users lost what they had typed.
@@ -366,6 +460,9 @@ def _request_code() -> None:
             result = auth.request_password_reset(email) or {}
         except Exception:  # noqa: BLE001  (same neutral message either way)
             result = {}
+    if result.get("delivery") == "unavailable":  # live mode without an email server: no codes at all
+        st.session_state["fp_error"] = RESET_UNAVAILABLE
+        return
     code = result.get("code") if result.get("delivery") == "screen" else None
     st.session_state["fp_email"] = email
     st.session_state["fp_sent_at"] = time.time()
