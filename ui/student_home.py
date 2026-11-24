@@ -20,9 +20,9 @@ from ui.components import (  # noqa: E402
     require_role,
     section_header,
 )
-from ui.theme import inject_css  # noqa: E402
+from ui.theme import CONTENT_WIDTH, inject_css  # noqa: E402
 
-inject_css(max_width="72rem")
+inject_css(max_width=CONTENT_WIDTH)
 user = require_role("student")
 
 # Only ever the signed-in student's own ID, taken from the authenticated session.
@@ -34,6 +34,7 @@ if not record:
         "We could not find a student record for your account. Please contact the admin office.",
     )
 else:
+    # The student header card is this page's header (name, ID, branch, "as of" date).
     render_student_dashboard(record)
 
 # Latest admin notices for this student's branch (plus notices for all branches).
@@ -43,4 +44,5 @@ section_header("Latest notices", "Newest first, for your branch and the whole co
 if latest:
     st.markdown(notice_cards_html(latest, max_body=400), unsafe_allow_html=True)
 else:
-    st.caption("No notices right now.")
+    empty_state("📢", "No notices right now", "Notices from the admin office for your branch appear here.",
+                compact=True)

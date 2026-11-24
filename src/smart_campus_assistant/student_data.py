@@ -224,22 +224,18 @@ def _category_key(category: str) -> str:
 
 
 def semester_bill(category: str, hostel: bool, fee_file: str | Path | None = None) -> int:
-    """Semester bill for a category from fee_structure.md ("Total semester bill" table)."""
-    fee_file = Path(fee_file) if fee_file else get_settings().data_dir / "fee_structure.md"
-    bills = dict(_FALLBACK_BILLS)
-    try:
-        section = fee_file.read_text(encoding="utf-8").split("## Total semester bill", 1)[1].split("\n## ", 1)[0]
-        for line in section.splitlines():
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            if len(cells) != 3 or not all(re.fullmatch(r"[\d,]+", c) for c in cells[1:]):
-                continue
-            label = cells[0].lower()
-            key = "obc" if "obc" in label else "sc" if label.startswith("sc") else "open"
-            bills[key] = (int(cells[1].replace(",", "")), int(cells[2].replace(",", "")))
-    except (OSError, IndexError, ValueError):
-        pass
-    day, resident = bills[_category_key(category)]
-    return resident if hostel else day
+    """Semester bill for a category from fee_structure.md ("Total semester bill" table).
+
+    The tables are parsed once by ``fee_calculator`` (the same numbers the assistant quotes);
+    a bill missing from the file falls back to ``_FALLBACK_BILLS``.
+    """
+    from smart_campus_assistant import fee_calculator  # lazy: fee_calculator imports this module
+
+    key = _category_key(category)
+    tables = fee_calculator.load_fee_tables(fee_file)
+    day, resident = (tables.bills.get(key) if tables else None) or (None, None)
+    fallback_day, fallback_resident = _FALLBACK_BILLS[key]
+    return (resident or fallback_resident) if hostel else (day or fallback_day)
 
 
 def _first_year_template(branch: str, students: dict[str, dict]) -> dict | None:
@@ -385,6 +381,9 @@ def _rs(amount: object) -> str:
         head = ",".join(re.findall(r"\d{1,2}", head[::-1]))[::-1]
         s = f"{head},{tail}"
     return f"Rs {sign}{s}"
+
+
+format_rupees = _rs  # public name for other modules (fee_calculator) that state amounts the same way
 
 
 def _date(value: object) -> date | None:

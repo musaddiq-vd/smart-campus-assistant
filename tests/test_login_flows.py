@@ -248,7 +248,8 @@ def test_must_change_banner_until_changed(flows):
     at = sign_in(start(), email, "Temp-9xq2-Kp")
     assert not at.exception
     assert at.session_state["user"]["must_change_password"] is True
-    assert at.warning and "temporary password" in at.warning[0].value
+    # The Account page explains it in its own box, so the app-wide warning is not repeated there.
+    assert not [w for w in at.warning if "temporary password" in w.value]
     assert "temporary password" in all_text(at) and at.text_input(key="pw_current").label == "Temporary password"
     # Other pages show the banner with a link to Account.
     at.switch_page("ui/student_home.py").run()

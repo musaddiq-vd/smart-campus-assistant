@@ -140,6 +140,7 @@ ADMIN_PAGES = [
     ("ui/admin_students.py", "Students", ":material/group:", "students"),
     ("ui/admin_requests.py", "Requests", ":material/support_agent:", "requests"),
     ("ui/admin_notices.py", "Notices", ":material/campaign:", "notices"),
+    ("ui/admin_documents.py", "Documents", ":material/description:", "documents"),
     ("ui/admin_insights.py", "Insights", ":material/query_stats:", "insights"),
 ]
 STUDENT_PAGES = [
@@ -186,11 +187,13 @@ def must_change_flag(auth, token: str | None) -> bool:
 
 def must_change_banner(pages: list, current) -> None:
     """Warning on every page (except Account itself) until the temporary password is changed."""
+    # Match by title: a default page reports an empty url_path. The Account page explains this itself.
+    if getattr(current, "title", None) == "Account":
+        return
     st.warning("You signed in with a temporary password. Please set your own password now.",
                icon=":material/password:")
-    # Match by title: a default page reports an empty url_path.
     account = next((p for p in pages if p.title == "Account"), None)
-    if account is not None and getattr(current, "title", None) != "Account":
+    if account is not None:
         st.page_link(account, label="Change password in Account", icon=":material/arrow_forward:")
 
 

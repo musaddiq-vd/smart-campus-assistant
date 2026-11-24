@@ -64,11 +64,11 @@ def stub_runner(question: str, force_route: str | None = None, student_id: str |
 # --- questions.json ---------------------------------------------------------
 
 def test_questions_count_and_split():
-    assert len(QUESTIONS) == 45
+    assert len(QUESTIONS) == 52
     routes = [q["expected_route"] for q in QUESTIONS]
-    assert routes.count("simple") == 20
-    assert routes.count("deep") == 12
-    assert routes.count("personal") == 13
+    assert routes.count("simple") == 23
+    assert routes.count("deep") == 14
+    assert routes.count("personal") == 15
 
 
 def test_questions_fields_and_unique_ids():
@@ -93,19 +93,40 @@ def test_student_ids_on_questions():
     guests = [q for q in personal if q["student_id"] is None]
     # Exactly one guest question; it expects a log-in prompt.
     assert len(guests) == 1 and "student ID" in guests[0]["expected_keywords"]
-    assert len(personal) - len(guests) == 12
+    assert len(personal) - len(guests) == 14
 
 
 def test_keywords_appear_in_data():
-    """Every keyword is in the college docs (simple/deep/guest) or in that student's record."""
+    """Every keyword is in the college docs (simple/deep/guest) or in that student's record.
+
+    A ``computed`` question may also expect a total that only the fee calculator works out from the
+    tables; an ``expect_not_found`` question expects the standard not-found message.
+    """
+    from smart_campus_assistant import fee_calculator, grounding
+
     docs = "\n".join(p.read_text(encoding="utf-8") for p in (ROOT / "data" / "college").glob("*.md"))
-    records = {
-        s["student_id"]: json.dumps(s)
-        for s in json.loads((ROOT / "data" / "students.json").read_text(encoding="utf-8"))["students"]
-    }
+    students = json.loads((ROOT / "data" / "students.json").read_text(encoding="utf-8"))["students"]
+    by_id = {s["student_id"]: s for s in students}
     for q in QUESTIONS:
-        source = records[q["student_id"]] if q["student_id"] else docs
+        record = by_id.get(q["student_id"])
+        source = json.dumps(record) if record else docs
+        if q.get("computed"):
+            source += "\n" + fee_calculator.fee_totals_text(q["question"], record)
+        if q.get("expect_not_found"):
+            source = grounding.NOT_FOUND_MESSAGE
         assert run_eval_mod.keyword_hit(source, q["expected_keywords"]) == 1.0, q["id"]
+
+
+def test_computed_questions_need_the_calculator():
+    """Each ``computed`` question expects a total its usual source (documents, or the student's record) lacks."""
+    docs = "\n".join(p.read_text(encoding="utf-8") for p in (ROOT / "data" / "college").glob("*.md"))
+    students = json.loads((ROOT / "data" / "students.json").read_text(encoding="utf-8"))["students"]
+    records = {s["student_id"]: json.dumps(s) for s in students}
+    computed = [q for q in QUESTIONS if q.get("computed")]
+    assert len(computed) >= 3
+    for q in computed:
+        source = records[q["student_id"]] if q["student_id"] else docs
+        assert run_eval_mod.keyword_hit(source, q["expected_keywords"]) < 1.0, q["id"]
 
 
 # --- keyword_hit ------------------------------------------------------------
@@ -131,8 +152,11 @@ def test_keyword_hit_numbers_need_digit_boundary():
 
 # --- run_eval / summarize / write_results ------------------------------------
 
+BY_ID = {q["id"]: q for q in QUESTIONS}
+
+
 def test_run_eval_writes_exact_csv_and_summary(tmp_path):
-    qs = QUESTIONS[:4] + QUESTIONS[-3:]  # simple questions + personal ones (incl. the guest)
+    qs = QUESTIONS[:4] + [BY_ID[i] for i in ("p11", "p12", "p13")]  # simple questions + personal ones (incl. the guest)
     rows = run_eval_mod.run_eval(qs, ["router", "always_deep"], runner=stub_runner, fake=True)
     assert len(rows) == 14
     summary = run_eval_mod.summarize(rows, fake=True)
@@ -222,7 +246,7 @@ def test_per_question_error_is_caught(tmp_path):
             raise RuntimeError("boom")
         return stub_runner(question, force_route, student_id)
 
-    qs = QUESTIONS[:2] + QUESTIONS[-4:]  # 2 simple + 3 logged-in personal + 1 guest
+    qs = QUESTIONS[:2] + [BY_ID[i] for i in ("p10", "p11", "p12", "p13")]  # 2 simple + 3 logged-in personal + 1 guest
     rows = run_eval_mod.run_eval(qs, ["router"], runner=flaky)
     errors = [r for r in rows if r["error"]]
     assert len(errors) == 3

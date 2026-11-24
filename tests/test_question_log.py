@@ -12,11 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from smart_campus_assistant import personal, question_log  # noqa: E402
+from smart_campus_assistant import feedback, personal, question_log, run_metrics  # noqa: E402
 
 NO_ANSWER = "The college documents provided do not contain this information."
 GOOD_ANSWER = "The library fine is Rs 5 per day [1]."
-FORBIDDEN = ("Cost", "cost", "token", "Token", "LLM", "Latency", "latency", "model", "Model")
 
 
 @pytest.fixture(autouse=True)
@@ -274,7 +273,7 @@ def _page_text(at) -> str:
 
 @pytest.fixture
 def page_db(path, monkeypatch):
-    """Point the page's question_log calls at the temp database (the app database is never opened)."""
+    """Point the page's reads of all three Insights tables at the temp database (the app database is never opened)."""
     def to_temp(real):
         def wrapper(*args, **kwargs):
             if not args or not isinstance(args[0], Path):  # the page never passes a path
@@ -283,9 +282,19 @@ def page_db(path, monkeypatch):
 
         return wrapper
 
-    for name in ("summary", "unanswered", "top_questions", "export_rows", "clear"):
-        monkeypatch.setattr(question_log, name, to_temp(getattr(question_log, name)))
+    for module, names in (
+        (question_log, ("summary", "unanswered", "top_questions", "export_rows", "clear")),
+        (feedback, ("summary", "recent_unhelpful", "export_rows", "clear")),
+        (run_metrics, ("summary", "recent_failures", "export_rows", "clear")),
+    ):
+        for name in names:
+            monkeypatch.setattr(module, name, to_temp(getattr(module, name)))
     return path
+
+
+def _table(at, *columns):
+    """The first table on the page that has all these columns (AppTest does not expose a dataframe's key)."""
+    return next(df.value for df in at.dataframe if set(columns) <= set(df.value.columns))
 
 
 def _run_page(user=ADMIN):
@@ -315,14 +324,15 @@ def test_page_shows_gaps_and_clears_after_confirm(page_db):
     question_log.log_question("What is the library fine per day?", "simple", GOOD_ANSWER, branch="ECE", path=page_db)
     question_log.log_question("Meri fees?", "personal", GOOD_ANSWER, branch="CSE", path=page_db)
 
+    feedback.record_rating("a1" * 16, 0, "What are the bus timings?", "simple", path=page_db)
+    run_metrics.record_run("What are the bus timings?", "simple", [], latency_ms=900, path=page_db)
+
     at = _run_page()
     assert not at.exception
     text = _page_text(at)
     for expected in ("Questions asked", "75%", "Unanswered", "Most asked topic", "could not answer", "Publish a notice",
-                     "Most asked questions"):
+                     "Most asked questions", "Answer feedback", "Model usage"):
         assert expected in text, expected
-    for word in FORBIDDEN:
-        assert word not in text, word
     gaps_table = at.dataframe[0].value
     assert list(gaps_table["Question"]) == ["What are the <b>bus</b> timings?"]
     assert list(gaps_table["Times asked"]) == [2]
@@ -330,10 +340,97 @@ def test_page_shows_gaps_and_clears_after_confirm(page_db):
 
     at.button(key="ins_clear").click().run()
     assert question_log.summary(page_db)["total"] == 4  # nothing is deleted before the confirm step
+    assert "4 logged questions, 1 answer rating and 1 usage record" in _page_text(at)
     at.button(key="ins_clear_no").click().run()
     assert question_log.summary(page_db)["total"] == 4
     at.button(key="ins_clear").click().run()
     at.button(key="ins_clear_yes").click().run()
     assert not at.exception
+    # The one "clear log" action clears every anonymous Insights table.
     assert question_log.summary(page_db)["total"] == 0
-    assert "No questions yet" in _page_text(at)
+    assert feedback.summary(page_db)["total"] == 0 and run_metrics.summary(page_db)["total"] == 0
+    text = _page_text(at)
+    assert "No questions yet" in text and "4 questions, 1 rating and 1 usage record removed" in text
+
+
+def test_page_shows_answer_feedback(page_db):
+    question_log.log_question("What is the hostel fee?", "simple", GOOD_ANSWER, path=page_db)
+    feedback.record_rating("a1" * 16, 1, "What is the hostel fee?", "simple", path=page_db)
+    feedback.record_rating("b2" * 16, 0, "What is the hostel <b>curfew</b>?", "simple", path=page_db)
+    feedback.record_comment("b2" * 16, "It says 9 pm, the notice says <i>10 pm</i>", path=page_db)
+    feedback.record_rating("c3" * 16, 0, "Meri attendance kitni hai?", "personal", path=page_db)
+
+    at = _run_page()
+    assert not at.exception
+    text = _page_text(at)
+    for expected in ("Answer feedback", "Helpful", "33%", "1 of 3 rated answers", "1 with a comment", "Weakest topic",
+                     "Hostel", "1 thumbs down"):
+        assert expected in text, expected
+    by_topic = _table(at, "Topic", "Ratings")
+    assert dict(zip(by_topic["Topic"], by_topic["Not helpful"], strict=True)) == {"Hostel": 1, "Attendance": 1}
+    by_route = _table(at, "Kind", "Ratings")
+    assert dict(zip(by_route["Kind"], by_route["Helpful"], strict=True)) == {"Quick answer": "50%", "Own record": "0%"}
+    recent = _table(at, "Rated", "Comment")
+    assert list(recent["Question"]) == ["(personal question)", "What is the hostel <b>curfew</b>?"]  # newest first
+    assert list(recent["Comment"]) == ["—", "It says 9 pm, the notice says <i>10 pm</i>"]  # plain table cells, not HTML
+    assert "<b>curfew</b>" not in text  # user text never reaches the page as markup
+
+
+def test_page_shows_model_usage_and_failures(page_db):
+    records = [{"model_id": "us.amazon.nova-lite-v1:0", "input_tokens": 1000, "output_tokens": 200, "latency_ms": 500}]
+    question_log.log_question("Library fine?", "simple", GOOD_ANSWER, path=page_db)
+    for latency in (1000, 2000, 3000):
+        run_metrics.record_run("Library fine?", "simple", records, latency_ms=latency, path=page_db)
+    run_metrics.record_run("Hostel fee?", "", [], latency_ms=5, error="aws_not_configured", path=page_db)
+
+    at = _run_page()
+    assert not at.exception
+    text = _page_text(at)
+    for expected in ("Model usage", "Questions today", "Average answer time", "2.0 s", "p95 3.0 s", "Tokens today",
+                     "3,600", "Cost today", "Failed questions", "1 failure in the last 14 days: 1 AWS not configured"):
+        assert expected in text, expected
+    days = _table(at, "Day", "Tokens")
+    assert len(days) == 14 and days["Questions"].iloc[0] == 4 and days["Failed"].iloc[0] == 1  # today first
+    routes = _table(at, "Kind", "Tokens")
+    assert set(routes["Kind"]) == {"Quick answer", "Not routed"}
+    failures = _table(at, "Asked", "Error")
+    assert list(failures["Error"]) == ["AWS not configured"] and list(failures["Question"]) == ["Hostel fee?"]
+    assert "IST" in failures["Asked"].iloc[0]  # shown in the college's time zone
+    assert not at.download_button(key="ins_download_usage").disabled
+    assert not at.download_button(key="ins_download_feedback").disabled  # a header-only CSV is still a CSV
+
+
+def test_page_shows_failures_even_without_answered_questions(page_db):
+    """With AWS missing every question fails: the usage rows must still be visible."""
+    run_metrics.record_run("Hostel fee?", "", [], latency_ms=5, error="aws_not_configured", path=page_db)
+    at = _run_page()
+    assert not at.exception
+    text = _page_text(at)
+    assert "No questions yet" not in text and "No question has been answered yet" in text
+    assert "AWS not configured" in text and "No answer has been rated yet" in text
+
+
+def test_page_survives_a_broken_optional_table(page_db, monkeypatch):
+    question_log.log_question("Library fine?", "simple", GOOD_ANSWER, path=page_db)
+
+    def broken(*args, **kwargs):
+        raise sqlite3.DatabaseError("disk image is malformed")
+
+    monkeypatch.setattr(feedback, "summary", broken)
+    monkeypatch.setattr(run_metrics, "summary", broken)
+    at = _run_page()
+    assert not at.exception
+    text = _page_text(at)
+    assert "Questions asked" in text
+    assert "The answer ratings could not be read." in text and "The model usage could not be read." in text
+
+
+def test_page_explains_unanswered_personal_questions(page_db):
+    """A refused personal question counts as unanswered but is never listed: the page must not say "all answered"."""
+    question_log.log_question("What is the hostel fee?", "simple", GOOD_ANSWER, path=page_db)
+    question_log.log_question("My friend's fees?", "personal", personal.REFUSAL_MESSAGE, path=page_db)
+    at = _run_page()
+    assert not at.exception
+    text = _page_text(at)
+    assert "Every question so far was answered" not in text
+    assert "1 unanswered question counted above was a personal one" in text

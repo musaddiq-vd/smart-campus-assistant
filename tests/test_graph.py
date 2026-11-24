@@ -63,10 +63,28 @@ def test_parse_route(text, expected):
         ("Mujhe hall ticket milega?", "personal"),
         ("Show my CGPA and backlogs", "personal"),
         ("What is the fee status of XYZ24ECE002?", "personal"),  # another ID: personal node refuses
+        # Hinglish "kaun" is "who" as often as "which": only "which branch" / "better" make it a comparison.
+        ("CSE department ka HoD kaun hai?", "simple"),
+        ("Library ka incharge kaun hai?", "simple"),
+        ("Kaunsi branch placement ke liye behtar hai?", "deep"),
+        ("CSE aur ECE mein kya fark hai?", "deep"),
+        ("Show my record", "personal"),
+        # Advice for "me" is deep; a comparison about "my" record stays personal.
+        ("Mujhe 2 lakh budget mein kaunsi branch better rahegi, scholarship ke saath?", "deep"),
+        ("Which branch is best for me if I want a scholarship?", "deep"),
+        ("Is my attendance better than the minimum?", "personal"),
     ],
 )
 def test_heuristic_route(question, route):
     assert router.heuristic_route(question)[0] == route
+
+
+def test_router_examples_agree_with_the_heuristic():
+    """The few-shot examples the router model sees and the keyword fallback give the same labels."""
+    from smart_campus_assistant import prompts
+
+    for question, answer in prompts.ROUTER_EXAMPLES:
+        assert router.heuristic_route(question)[0] == json.loads(answer)["route"], question
 
 
 def test_router_falls_back_to_heuristic_on_bad_output(fake_mode, monkeypatch):
@@ -255,6 +273,8 @@ def test_fake_mode_restores_originals():
         ("Hostel ke saath ek saal ka total kharcha kitna hoga?", True, False),
         ("How can a student clear backlogs?", False, True),
         ("What is the library fine per day?", False, False),
+        ("Tuition aur hostel milakar kitna hoga?", True, False),
+        ("Backlog clear karne ke liye kya karna hoga?", False, True),
     ],
 )
 def test_answer_hints(question, total, steps):
@@ -272,6 +292,13 @@ def test_hints_reach_simple_and_writer_messages():
     assert prompts.TOTAL_HINT in prompts.simple_answer_messages(q, "[1] (x)\nfact")[-1].content
     writer = prompts.writer_messages(q, "### sub\n- fact [1]", "[1] src")[-1].content
     assert writer.index("Sources:") < writer.index(prompts.TOTAL_HINT)  # after the notes and sources
+
+
+def test_personal_messages_get_the_same_format_hints():
+    from smart_campus_assistant import prompts
+
+    message = prompts.personal_answer_messages("Mera saal ka total kharcha kitna hai?", "record", "[1] (x)\nfact")
+    assert prompts.TOTAL_HINT in message[-1].content
 
 
 def test_planner_does_not_invite_extra_branches():

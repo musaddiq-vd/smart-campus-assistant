@@ -12,43 +12,42 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from ui.components import (  # noqa: E402
-    NOTICE_CSS,
+    alert,
+    confirm_prompt,
     email_note,
     empty_state,
+    flash,
     get_branches,
-    hero_html,
+    hero,
     notice_card_html,
     notify_students,
     require_role,
     section_header,
+    show_flashes,
 )
-from ui.theme import inject_css  # noqa: E402
+from ui.theme import CONTENT_WIDTH, inject_css  # noqa: E402
 
-inject_css(max_width="72rem")
-
-# Guard: only a signed-in admin may use this page.
-_user = st.session_state.get("user")
-if not isinstance(_user, dict) or _user.get("role") != "admin":
-    st.error("You do not have access to this page. Admins only.", icon=":material/lock:")
-    st.stop()
+inject_css(max_width=CONTENT_WIDTH)
+# Only a signed-in admin may use this page (app.py never registers it for students).
 user = require_role("admin")
 
 try:
     from smart_campus_assistant import notices as notices_mod
 except Exception as exc:  # noqa: BLE001
-    st.error(f"The notices module could not be loaded: {type(exc).__name__}.")
+    alert("error", f"The notices module could not be loaded: {type(exc).__name__}.")
     st.stop()
 
 CATEGORIES = notices_mod.CATEGORIES
 BRANCH_OPTIONS = ["ALL", *get_branches().keys()]
 FORM_KEYS = {"notice_title": "", "notice_body": "", "notice_category": "general", "notice_branches": ["ALL"]}
+FLASH_KEY = "notice_flash"
 
 for key, default in FORM_KEYS.items():
     st.session_state.setdefault(key, default)
 
 
 def _flash(kind: str, text: str) -> None:
-    st.session_state.setdefault("notice_flash", []).append((kind, text))
+    flash(FLASH_KEY, kind, text)
 
 
 def publish() -> None:
@@ -101,22 +100,20 @@ def confirm_delete(notice_id: str) -> None:
         _flash("warning", f"Deleted {notice_id}. {message}")
 
 
-st.markdown(
-    hero_html("Admin · notices", "Notices",
-              "Publish a notice: students of the chosen branches see it on their dashboard, "
-              "and the assistant can answer questions about it right away."),
-    unsafe_allow_html=True,
-)
-st.markdown(NOTICE_CSS, unsafe_allow_html=True)
+hero("Admin · notices", "Notices",
+     "Publish a notice: students of the chosen branches see it on their dashboard, "
+     "and the assistant can answer questions about it right away.")
 
-for kind, text in st.session_state.pop("notice_flash", []):
-    icon = {"success": ":material/check_circle:", "warning": ":material/warning:", "error": ":material/error:"}[kind]
-    st.toast(text, icon=icon)
-    getattr(st, kind)(text, icon=icon)
+# The outcome of the last action: one inline message (no toast on top of it).
+show_flashes(FLASH_KEY)
 
 left, right = st.columns([1, 1], gap="large")
 with left:
-    section_header("New notice", "Title 5-120 characters, text 10-4000 characters. HTML is removed.")
+    section_header(
+        "New notice",
+        f"Title {notices_mod.TITLE_MIN}-{notices_mod.TITLE_MAX} characters, text "
+        f"{notices_mod.BODY_MIN}-{notices_mod.BODY_MAX} characters. HTML is removed.",
+    )
     st.text_input("Title", key="notice_title", max_chars=notices_mod.TITLE_MAX,
                   placeholder="e.g. Mid-sem exam rescheduled")
     c1, c2 = st.columns(2)
@@ -143,7 +140,8 @@ with right:
                    "published_at": None}
         st.markdown(f'<div class="sca-notices">{notice_card_html(preview)}</div>', unsafe_allow_html=True)
     else:
-        st.caption("Start typing to see a preview.")
+        empty_state("👀", "Nothing to preview yet", "Start typing a title or text to see the notice card.",
+                    compact=True)
 
 published = notices_mod.list_notices()
 section_header("Published notices", f"{len(published)} notice{'s' if len(published) != 1 else ''}, newest first")
@@ -152,17 +150,16 @@ if not published:
 pending = st.session_state.get("notice_confirm")
 for notice in published:
     nid = notice["id"]
-    card, action = st.columns([6, 1], vertical_alignment="center")
-    with card:
-        st.markdown(f'<div class="sca-notices">{notice_card_html(notice)}</div>', unsafe_allow_html=True)
-    with action:
+    # The action sits right under its own card (as on the request pages): in a narrow column beside it
+    # the label was cut to "D...". The small gap keeps card and button visibly together.
+    with st.container(gap="xsmall"):
+        st.markdown(f'<div class="sca-notices tight">{notice_card_html(notice)}</div>', unsafe_allow_html=True)
         st.button("Delete", key=f"notice_del_{nid}", icon=":material/delete:", on_click=ask_delete, args=(nid,),
                   disabled=pending == nid)
     if pending == nid:
-        st.warning(f"Delete {nid} \"{notice.get('title', '')}\"? Students will no longer see it and "
-                   "the assistant will stop using it.", icon=":material/warning:")
-        y, n, _ = st.columns([1, 1, 4])
-        with y:
-            st.button("Yes, delete", key=f"notice_yes_{nid}", type="primary", on_click=confirm_delete, args=(nid,))
-        with n:
-            st.button("Cancel", key=f"notice_no_{nid}", on_click=cancel_delete)
+        confirm_prompt(
+            f"Delete {nid} \"{notice.get('title', '')}\"? Students will no longer see it and "
+            "the assistant will stop using it.",
+            yes_label="Yes, delete", yes_key=f"notice_yes_{nid}", on_yes=confirm_delete, yes_args=(nid,),
+            no_key=f"notice_no_{nid}", on_no=cancel_delete,
+        )

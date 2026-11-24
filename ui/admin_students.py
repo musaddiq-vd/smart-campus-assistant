@@ -14,20 +14,24 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from ui.components import (  # noqa: E402
+    alert,
     all_records_safe,
+    confirm_prompt,
     empty_state,
     fee_status_label,
+    flash,
     format_rupees,
-    hero_html,
+    hero,
     local_stamp,
     render_student_dashboard,
     require_role,
     section_header,
+    show_flashes,
     student_flags,
     student_label,
 )
 from ui.login import load_auth  # noqa: E402
-from ui.theme import inject_css  # noqa: E402
+from ui.theme import WIDE_WIDTH, inject_css  # noqa: E402
 
 BRANCH_ORDER = ["CSE", "ECE", "ME", "CE"]
 NONE = "—"
@@ -107,7 +111,7 @@ def render_account_box(record: dict) -> None:
     if result and result.get("sid") == sid:
         st.session_state.pop("reset_result", None)  # show once: gone on the next run
         if result.get("error"):
-            st.error(result["error"], icon=":material/error:")
+            alert("error", result["error"])
         else:
             with st.container(key="temp_password_box"):
                 st.markdown("**Temporary password** (shown only once)")
@@ -118,12 +122,12 @@ def render_account_box(record: dict) -> None:
     if not hasattr(auth, "admin_reset_password"):
         return
     if st.session_state.get("reset_confirm") == sid:
-        st.warning(f"Reset the password of {record.get('name') or sid}? Their current password stops working "
-                   "and every device is signed out.", icon=":material/warning:")
-        c1, c2 = st.columns(2)
-        c1.button("Yes, reset password", type="primary", key="reset_yes", on_click=_do_reset, args=(sid, email),
-                  width="stretch")
-        c2.button("Cancel", key="reset_cancel", on_click=_cancel_reset, width="stretch")
+        confirm_prompt(
+            f"Reset the password of {record.get('name') or sid}? Their current password stops working "
+            "and every device is signed out.",
+            yes_label="Yes, reset password", yes_key="reset_yes", on_yes=_do_reset, yes_args=(sid, email),
+            no_key="reset_cancel", on_no=_cancel_reset,
+        )
     else:
         st.button("Reset password", icon=":material/lock_reset:", key="reset_ask", on_click=_ask_reset, args=(sid,))
 
@@ -131,17 +135,11 @@ def render_account_box(record: dict) -> None:
 # ---------- manage record (audited edits through record_updates) ----------
 
 REC_SAVE_FAILED = "The change could not be saved. Please try again."
-REC_CSS = """
-<style>
-.rec-audit { display: flex; flex-direction: column; gap: .45rem; margin: .4rem 0 .6rem 0; }
-.rec-audit .row {
-  border: 1px solid var(--sca-card-border, rgba(128,128,128,.25)); border-radius: 10px;
-  border-left: 3px solid var(--sca-brand, #5B5BD6); padding: .5rem .8rem;
-}
-.rec-audit .what { font-size: .9rem; font-weight: 600; }
-.rec-audit .meta { font-size: .76rem; color: var(--sca-muted, gray); margin-top: .1rem; }
-</style>
-"""
+
+
+def _rec_flash_key(sid: str) -> str:
+    """Messages are kept per student, so they show under the record they belong to."""
+    return f"rec_flash_{sid}"
 
 
 def _rec_gen(sid: str) -> int:
@@ -164,13 +162,13 @@ def _rec_apply(sid: str, action: str, *args) -> None:
         )
         latest = record_updates.list_audit(sid, limit=1)
     except (ValueError, PermissionError) as exc:  # RecordError messages are written for the UI
-        st.session_state["rec_flash"] = {"sid": sid, "kind": "error", "text": str(exc) or REC_SAVE_FAILED}
+        flash(_rec_flash_key(sid), "error", str(exc) or REC_SAVE_FAILED)
         return
     except Exception:  # noqa: BLE001
-        st.session_state["rec_flash"] = {"sid": sid, "kind": "error", "text": REC_SAVE_FAILED}
+        flash(_rec_flash_key(sid), "error", REC_SAVE_FAILED)
         return
     summary = str((latest[0].get("detail") or {}).get("summary") or "") if latest else ""
-    st.session_state["rec_flash"] = {"sid": sid, "kind": "success", "text": f"Saved. {summary}".strip()}
+    flash(_rec_flash_key(sid), "success", f"Saved. {summary}".strip())
     gens = dict(st.session_state.get("rec_gen", {}))
     gens[sid] = gens.get(sid, 0) + 1
     st.session_state["rec_gen"] = gens
@@ -223,13 +221,8 @@ def render_manage_record(record: dict) -> None:
         return
     sid = str(record.get("student_id") or "").upper()
     section_header("Manage record", "Changes are saved immediately and logged with your account.")
-    st.markdown(REC_CSS, unsafe_allow_html=True)
-
-    flash = st.session_state.get("rec_flash")
-    if flash and flash.get("sid") == sid:
-        st.session_state.pop("rec_flash", None)
-        icon = ":material/check_circle:" if flash["kind"] == "success" else ":material/error:"
-        getattr(st, flash["kind"])(flash["text"], icon=icon)
+    # The outcome of the last change, right above the forms: one inline message.
+    show_flashes(_rec_flash_key(sid))
 
     fees = record.get("fees") or {}
     books = [b for b in (record.get("library") or {}).get("books_issued") or [] if isinstance(b, dict)]
@@ -314,7 +307,8 @@ def render_manage_record(record: dict) -> None:
         if rows:
             st.markdown(audit_list_html(rows), unsafe_allow_html=True)
         else:
-            st.caption("No changes have been made to this record yet.")
+            empty_state("🕘", "No changes yet", "Edits made from these tabs are listed here with who made them.",
+                        compact=True)
 
 
 def matches(record: dict, flags: dict, query: str, branches: list, years: list, statuses: list, low_only: bool) -> bool:
@@ -343,17 +337,14 @@ def table_row(record: dict, flags: dict) -> dict:
         "Attendance (%)": flags["attendance"],
         "Overdue books": flags["overdue_books"],
         "Backlogs": flags["backlogs"],
-        "CGPA": f"{float(cgpa):.2f}" if cgpa is not None else "N/A",
+        "CGPA": f"{float(cgpa):.2f}" if cgpa is not None else NONE,  # the same dash as every other missing value
     }
 
 
-inject_css()
+inject_css(max_width=WIDE_WIDTH)
 require_role("admin")
 
-st.markdown(
-    hero_html("Admin · students", "Students", "Search and filter every student record, then open one for the full view."),
-    unsafe_allow_html=True,
-)
+hero("Admin · students", "Students", "Search and filter every student record, then open one for the full view.")
 
 records = all_records_safe()
 if not records:
@@ -380,7 +371,8 @@ shown.sort(key=lambda r: r["student_id"])
 
 section_header("All students", f"{len(shown)} of {len(records)} shown")
 if not shown:
-    st.info("No students match these filters.", icon=":material/filter_alt_off:")
+    # The same empty state as the request queue when its filters match nothing.
+    empty_state("🔍", "No students match", "Nothing matches this search and these filters. Clear one to see more.")
     st.stop()
 
 df = pd.DataFrame([table_row(r, flags_by_id[r["student_id"]]) for r in shown])

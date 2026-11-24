@@ -23,7 +23,7 @@ from html import escape
 
 import streamlit as st
 
-from ui.components import get_branches, get_college_name
+from ui.components import LOCKOUT_ICON, alert, demo_code_html, get_branches, get_college_name, is_demo_mode
 from ui.theme import inject_css
 
 ROLES = {"Student": "student", "Admin": "admin"}
@@ -49,10 +49,18 @@ REG_WINDOW = 600  # ... within this many seconds
 PASSWORD_KEYS = ("login_password", "reg_password", "reg_confirm", "claim_password", "claim_confirm",
                  "fp_new", "fp_confirm")
 
-# Hide the sidebar (and its toggle) while nobody is signed in.
+# Hide the sidebar (and its toggle) while nobody is signed in, and give the page a soft brand glow
+# (background-image only, so the theme's own light or dark background colour stays underneath).
 _LOGIN_CSS = """
 <style>
 [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"], [data-testid="stExpandSidebarButton"] { display: none !important; }
+[data-testid="stHeader"] { background: transparent; }
+.stApp {
+  background-image:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--sca-brand) 14%, transparent), transparent 42%),
+    radial-gradient(circle at 88% 100%, color-mix(in srgb, var(--sca-deep) 12%, transparent), transparent 45%);
+  background-attachment: fixed;
+}
 </style>
 """
 
@@ -166,6 +174,26 @@ def _on_view_change() -> None:
         st.session_state.pop(key, None)
 
 
+def show_error(key: str) -> None:
+    """The error of one view, under its form; lockouts get the clock icon (same as the Account page)."""
+    error = st.session_state.get(key)
+    if error:
+        alert("error", error, icon=LOCKOUT_ICON if str(error).startswith("Too many") else None)
+
+
+def step_html(step: int, total: int, title: str) -> str:
+    """"Step 2 of 2 · Check your email" header of the 6-digit code steps."""
+    return (f'<div class="sca-login-step"><span class="n">Step {step} of {total}</span>'
+            f'<span class="t">{escape(title)}</span></div>')
+
+
+def _demo_mode() -> bool:
+    try:
+        return is_demo_mode()
+    except Exception:  # noqa: BLE001  (backend config missing: say nothing about demo accounts)
+        return False
+
+
 # ---------- sign in ----------
 
 def _sign_in() -> None:
@@ -218,21 +246,19 @@ def _render_sign_in() -> None:
     )
     notice = st.session_state.pop("login_notice", None)
     if notice:
-        st.success(notice, icon=":material/check_circle:")
+        alert("success", notice)
     with st.form("login_form", border=False, enter_to_submit=True):
         st.text_input("Email", key="login_email", placeholder="name@xyz.edu.example", autocomplete="username")
         st.text_input("Password", key="login_password", type="password", autocomplete="current-password")
         st.form_submit_button("Sign in", type="primary", width="stretch", on_click=_sign_in, icon=":material/login:",
                               key="login_submit")
 
-    error = st.session_state.get("login_error")
-    if error:
-        icon = ":material/lock_clock:" if error.startswith("Too many") else ":material/error:"
-        st.error(error, icon=icon)
-    st.markdown(
-        '<div class="sca-login-note">Demo accounts: see <code>data/demo_credentials.csv</code></div>',
-        unsafe_allow_html=True,
-    )
+    show_error("login_error")
+    if _demo_mode():  # a file path on a live site would only confuse real users
+        st.markdown(
+            '<div class="sca-login-note">Demo accounts: see <code>data/demo_credentials.csv</code></div>',
+            unsafe_allow_html=True,
+        )
 
 
 # ---------- register ----------
@@ -375,31 +401,31 @@ def _restart_signup() -> None:
 
 def _render_signup_code() -> None:
     pending = st.session_state.get("reg_pending") or {}
+    st.markdown(step_html(2, 2, "Verify your email"), unsafe_allow_html=True)
     st.info(f"We sent a 6-digit code to {pending.get('email', 'your email')}. Enter it to finish creating "
             "your account. The code is valid for 15 minutes.", icon=":material/mark_email_read:")
     code = st.session_state.get("reg_demo_code")
     if code:
-        st.markdown(
-            '<div class="sca-demo-code"><div class="lbl">Demo mode · no email server configured</div>'
-            f'<div class="code">{escape(code)}</div>'
-            '<div class="hint">In a real deployment this code arrives by email.</div></div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(demo_code_html(code), unsafe_allow_html=True)
     with st.form("reg_code_form", border=False, enter_to_submit=True):
         st.text_input("6-digit code", key="reg_code", max_chars=6, autocomplete="one-time-code")
         st.form_submit_button("Verify and create account", type="primary", width="stretch", on_click=_verify_signup,
                               icon=":material/verified:", key="reg_verify")
-    st.button("Start again (new code)", on_click=_restart_signup, key="reg_restart", width="stretch")
-    error = st.session_state.get("reg_error")
-    if error:
-        st.error(error, icon=":material/error:")
+    show_error("reg_error")
+    st.button("Start again (new code)", on_click=_restart_signup, key="reg_restart", width="stretch",
+              icon=":material/restart_alt:")
 
 
 def _render_register(auth) -> None:
-    st.markdown('<div class="sca-login-sub">Student registration</div>', unsafe_allow_html=True)
     if st.session_state.get("reg_pending"):
         _render_signup_code()
         return
+    # With email verification sign-up has two steps (details, then the emailed code); say so up front.
+    two_step = callable(getattr(auth, "complete_signup", None))
+    if two_step:
+        st.markdown(step_html(1, 2, "Student registration"), unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="sca-login-sub">Student registration</div>', unsafe_allow_html=True)
     allowed = getattr(auth, "self_registration_enabled", None)
     modes = list(REG_MODES) if not callable(allowed) or allowed() else [REG_MODES[1]]
     if st.session_state.get("reg_mode") not in modes:
@@ -435,9 +461,7 @@ def _render_register(auth) -> None:
             label = "Activate account"
         st.form_submit_button(label, type="primary", width="stretch", on_click=_register,
                               icon=":material/person_add:", key="reg_submit")
-    error = st.session_state.get("reg_error")
-    if error:
-        st.error(error, icon=":material/error:")
+    show_error("reg_error")
     st.markdown('<div class="sca-login-note">Admin accounts are created by the college office.</div>',
                 unsafe_allow_html=True)
 
@@ -518,38 +542,56 @@ def _restart_reset() -> None:
     st.session_state["fp_email_input"] = st.session_state.get("fp_email") or ""
 
 
+def _resend_code() -> None:
+    _request_code()
+    st.session_state["fp_resent"] = True  # the fragment below redraws the whole page with the new code
+
+
+def _resend_seconds_left() -> float:
+    return RESEND_AFTER - (time.time() - float(st.session_state.get("fp_sent_at") or 0))
+
+
+def _resend_button(waiting: bool) -> None:
+    """"Resend in 42 s", ticking once a second, then "Resend code".
+
+    It runs as a fragment that reruns on its own while the wait lasts: before, the label stood
+    still and the button stayed disabled until something else redrew the page.
+    """
+    left = _resend_seconds_left()
+    if st.session_state.pop("fp_resent", False) or (waiting and left <= 0):
+        st.rerun()  # whole page: a new demo code to show, or stop the timer now that the wait is over
+    st.button("Resend code" if left <= 0 else f"Resend in {math.ceil(left)} s", disabled=left > 0,
+              on_click=_resend_code, key="fp_resend", width="stretch", icon=":material/forward_to_inbox:")
+
+
 def _render_forgot() -> None:
-    st.markdown('<div class="sca-login-sub">Reset your password</div>', unsafe_allow_html=True)
     if st.session_state.get("fp_step") != 2:
+        st.markdown(step_html(1, 2, "Reset your password"), unsafe_allow_html=True)
         with st.form("fp_request_form", border=False, enter_to_submit=True):
             st.text_input("Account email", key="fp_email_input", placeholder="name@xyz.edu.example", autocomplete="email")
             st.form_submit_button("Send code", type="primary", width="stretch", on_click=_request_code,
                                   icon=":material/mail:", key="fp_send")
-    else:
-        st.info(RESET_SENT, icon=":material/mark_email_read:")
-        code = st.session_state.get("fp_demo_code")
-        if code:
-            st.markdown(
-                '<div class="sca-demo-code"><div class="lbl">Demo mode · no email server configured</div>'
-                f'<div class="code">{escape(code)}</div>'
-                '<div class="hint">In a real deployment this code arrives by email.</div></div>',
-                unsafe_allow_html=True,
-            )
-        with st.form("fp_confirm_form", border=False, enter_to_submit=True):
-            st.text_input("6-digit code", key="fp_code", max_chars=6, autocomplete="one-time-code")
-            st.text_input("New password", key="fp_new", type="password", autocomplete="new-password")
-            st.text_input("Confirm new password", key="fp_confirm", type="password", autocomplete="new-password")
-            st.caption(password_rules(load_auth()[0]))
-            st.form_submit_button("Set new password", type="primary", width="stretch", on_click=_confirm_reset,
-                                  icon=":material/key:", key="fp_reset")
-        left = RESEND_AFTER - (time.time() - float(st.session_state.get("fp_sent_at") or 0))
-        c1, c2 = st.columns(2)
-        c1.button("Resend code" if left <= 0 else f"Resend in {math.ceil(left)} s", disabled=left > 0,
-                  on_click=_request_code, key="fp_resend", width="stretch")
-        c2.button("Use another email", on_click=_restart_reset, key="fp_restart", width="stretch")
-    error = st.session_state.get("fp_error")
-    if error:
-        st.error(error, icon=":material/error:")
+        show_error("fp_error")
+        return
+    st.markdown(step_html(2, 2, "Choose a new password"), unsafe_allow_html=True)
+    st.info(RESET_SENT, icon=":material/mark_email_read:")
+    code = st.session_state.get("fp_demo_code")
+    if code:
+        st.markdown(demo_code_html(code), unsafe_allow_html=True)
+    with st.form("fp_confirm_form", border=False, enter_to_submit=True):
+        st.text_input("6-digit code", key="fp_code", max_chars=6, autocomplete="one-time-code")
+        st.text_input("New password", key="fp_new", type="password", autocomplete="new-password")
+        st.text_input("Confirm new password", key="fp_confirm", type="password", autocomplete="new-password")
+        st.caption(password_rules(load_auth()[0]))
+        st.form_submit_button("Set new password", type="primary", width="stretch", on_click=_confirm_reset,
+                              icon=":material/key:", key="fp_reset")
+    show_error("fp_error")
+    waiting = _resend_seconds_left() > 0
+    c1, c2 = st.columns(2)
+    with c1:
+        st.fragment(_resend_button, run_every=1 if waiting else None)(waiting)
+    c2.button("Use another email", on_click=_restart_reset, key="fp_restart", width="stretch",
+              icon=":material/alternate_email:")
 
 
 # ---------- page ----------

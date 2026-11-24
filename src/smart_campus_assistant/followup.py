@@ -25,9 +25,14 @@ SHORT_QUESTION_WORDS = 4
 # Words that point back at something said earlier (English and Hinglish). Bare "me" and "is" are left
 # out on purpose ("hostel me", "what is"); "is" as Hinglish "this" is covered by "isme", "iska" etc.
 # "this / that" before a time word ("this semester", "that year") names a time, not something said earlier.
+# Likewise "is there / there are" (existence), "one-time / one semester" (a number) and "more than"
+# (a comparison) refer back to nothing, so "Is there a gym?" stays a standalone question.
 REFERENCE_WORDS = re.compile(
     r"\b(it|its|(?:this|that)(?!\s+(?:semester|sem|year|month|week|session|term)\b)|those|these|they|them|"
-    r"their|there|same|also|too|else|another|more|one|ones|"
+    r"their|(?<!\bis )(?<!\bare )(?<!\bwas )(?<!\bwere )there(?!\s+(?:is|are|was|were|will|has|have)\b)|"
+    r"same|also|too|else|another|more(?!\s+than\b)|"
+    r"one(?![-\s]+(?:time|times|years?|semesters?|sem|days?|months?|weeks?|books?|courses?|subjects?|exams?|of)\b)|"
+    r"ones|"
     r"previous|above|earlier|former|latter|instead|"
     r"uska|uski|uske|unka|unki|unke|iska|iski|iske|inka|inki|inke|isme|ismein|usme|usmein|"
     r"wo|woh|vo|ye|yeh|wahi|vahi|yahi|waha|wahan|vaha|yaha|bhi|phir|fir)\b",

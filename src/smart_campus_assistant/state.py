@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import operator
-from typing import Annotated, Literal, Optional, TypedDict
+from typing import Annotated, Literal, NotRequired, Optional, TypedDict
 
 from langchain_core.documents import Document
 
@@ -13,6 +13,9 @@ class Citation(TypedDict):
     college: str  # college key, e.g. "xyz"
     page: Optional[int]  # 1-based section number within the document
     snippet: str  # short quote from the chunk
+    # Heading path of the chunk, e.g. "Fee Structure 2026-27 > Late fee" (None when unknown).
+    # Optional so citations stored before this key existed stay valid.
+    section: NotRequired[Optional[str]]
 
 
 class Note(TypedDict):

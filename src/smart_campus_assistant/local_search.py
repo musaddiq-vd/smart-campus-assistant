@@ -1,12 +1,14 @@
-"""Offline keyword search (BM25) over the real college documents and admin notices.
+"""Keyword search (BM25) over the college documents, uploaded documents and admin notices.
 
-Demo mode has no AWS, so it cannot use the S3 Vectors index. This module gives it a
-small lexical index over the very same chunks a full ingest would embed
-(``ingest.all_chunks()``: ``data/college/*.md`` plus ``data/notices.json``), so offline
-answers quote the real documents and a notice is searchable as soon as it is saved.
+Demo mode has no AWS, so it cannot use the S3 Vectors index: ``search`` (BM25 + the shared
+rerank in ``ranking.py``) is its whole retriever. Live hybrid search uses ``keyword_search``
+as its second ranking next to vector similarity. Both read the very same chunks a full ingest
+embeds (``ingest.all_chunks()``: ``data/college/*.md``, ``data/uploads/`` and
+``data/notices.json``), so offline answers quote the real documents and a new notice or upload
+is searchable as soon as it is saved.
 
-The index is rebuilt automatically when a document or the notices file changes
-(checked by file modification time on every search, which costs a few ``stat`` calls).
+The index is rebuilt automatically when a document, an upload or the notices file changes
+(checked by file name, size and modification time on every search, which costs a few ``stat`` calls).
 """
 
 from __future__ import annotations
@@ -19,17 +21,10 @@ from pathlib import Path
 
 from langchain_core.documents import Document
 
-from smart_campus_assistant.config import BRANCHES, get_settings
-
 DEFAULT_K = 4
 BM25_K1 = 1.5
 BM25_B = 0.75
 HEADING_BOOST = 1.5  # a query word in the chunk's heading path counts this much extra
-SCOPE_BOOST = 1.25  # a chunk that names the student's own branch ranks this much higher
-
-# "question (CSE Computer Science and Engineering)": the branch hint personal.branch_scoped_query adds.
-_SCOPE_RE = re.compile(r"\s*\(([A-Z]{2,3}) [^()]*\)\s*$")
-_BRANCH_CODE_RE = re.compile(r"\b(" + "|".join(BRANCHES) + r")\b")
 
 # English and Hinglish words that carry no topic.
 STOPWORDS = frozenset(
@@ -94,7 +89,6 @@ class _Index:
         self.term_counts: list[Counter[str]] = []
         self.heading_terms: list[set[str]] = []
         self.lengths: list[int] = []
-        self.branches: list[frozenset[str]] = []  # branch codes named in each chunk (case-sensitive)
         doc_freq: Counter[str] = Counter()
         for chunk in chunks:
             heading, _, _ = chunk.page_content.partition("\n")
@@ -103,7 +97,6 @@ class _Index:
             self.term_counts.append(counts)
             self.heading_terms.append(set(tokenize(heading)))
             self.lengths.append(len(terms))
-            self.branches.append(frozenset(_BRANCH_CODE_RE.findall(chunk.page_content)))
             doc_freq.update(counts.keys())
         n = len(chunks)
         self.avg_length = (sum(self.lengths) / n) if n else 0.0
@@ -131,14 +124,24 @@ def _mtime(path: Path) -> int:
         return 0
 
 
-def _signature() -> tuple:
-    """Changes whenever a college document or the notices file is added, removed or edited."""
-    from smart_campus_assistant import notices
+def _size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return -1
 
-    data_dir = Path(get_settings().data_dir)
-    docs = tuple((p.name, _mtime(p)) for p in sorted(data_dir.glob("*.md")))
+
+def _signature() -> tuple:
+    """Changes whenever a college document, an upload or the notices file is added, removed or edited.
+
+    The file list comes from ``ingest.source_files()``, so the index always covers the folders
+    ingest reads (tests that point ingest at a temp folder get a matching index).
+    """
+    from smart_campus_assistant import ingest, notices
+
+    files = tuple((str(p), _mtime(p), _size(p)) for p in ingest.source_files())
     notices_path = notices.notices_file()
-    return (str(data_dir), docs, str(notices_path), _mtime(notices_path))
+    return (str(ingest.get_settings().data_dir), files, str(notices_path), _mtime(notices_path), _size(notices_path))
 
 
 def _get_index() -> _Index:
@@ -164,19 +167,17 @@ def chunk_count() -> int:
     return len(_get_index().chunks)
 
 
-def search(query: str, k: int | None = None, college: str | None = None) -> list[Document]:
-    """Best-matching chunks for ``query``, best first. Chunks that share no topic word are left out.
+def keyword_search(query: str, limit: int, college: str | None = None) -> list[tuple[Document, float]]:
+    """Raw BM25 ranking: [(chunk, score)] best first, at most ``limit``; chunks sharing no topic word are left out.
 
-    ``college`` is accepted for parity with ``retriever.search`` and filters on metadata.
+    The "(CSE ...)" branch hint is not searched for: as query words it would drown the real
+    question. The rerank uses it instead.
     """
+    from smart_campus_assistant.ranking import split_scope
+
     index = _get_index()
-    # The branch hint only breaks ties; as query words it would drown the real question.
-    scope = None
-    hint = _SCOPE_RE.search(query)
-    if hint and hint.group(1) in BRANCHES:
-        scope, query = hint.group(1), query[: hint.start()]
-    terms = tokenize(query)
-    if not terms:
+    terms = tokenize(split_scope(query)[0])
+    if not terms or limit <= 0:
         return []
     scored = []
     for i, chunk in enumerate(index.chunks):
@@ -184,8 +185,17 @@ def search(query: str, k: int | None = None, college: str | None = None) -> list
             continue
         score = index.score(terms, i)
         if score > 0:
-            if scope and scope in index.branches[i]:
-                score *= SCOPE_BOOST
             scored.append((score, i))
     scored.sort(key=lambda pair: (-pair[0], pair[1]))
-    return [index.chunks[i] for _, i in scored[: k or DEFAULT_K]]
+    return [(index.chunks[i], score) for score, i in scored[:limit]]
+
+
+def search(query: str, k: int | None = None, college: str | None = None) -> list[Document]:
+    """Best-matching chunks for ``query``, best first: BM25 candidates, then the shared rerank.
+
+    ``college`` is accepted for parity with ``retriever.search`` and filters on metadata.
+    """
+    from smart_campus_assistant import ranking
+
+    k = k or DEFAULT_K
+    return ranking.rerank(query, keyword_search(query, ranking.candidate_count(k), college), k)

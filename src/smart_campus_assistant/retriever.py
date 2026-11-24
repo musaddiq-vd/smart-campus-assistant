@@ -1,20 +1,29 @@
-"""Vector store access, search with an optional college filter, and prompt/citation helpers."""
+"""Vector store access, hybrid search with an optional college filter, and prompt/citation helpers.
+
+``search`` (SEARCH_MODE=hybrid, the default) fuses S3 Vectors similarity with BM25 keyword
+search over the same chunks (reciprocal rank fusion), then applies the cheap deterministic
+rerank in ``ranking.py``. SEARCH_MODE=vector keeps plain similarity search.
+"""
 
 from __future__ import annotations
 
+import logging
 import re
 from functools import lru_cache
 
 from langchain_core.documents import Document
 from langchain_core.vectorstores import InMemoryVectorStore, VectorStore
 
-from smart_campus_assistant import models
+from smart_campus_assistant import models, ranking
 from smart_campus_assistant.config import COLLEGE_ALIASES, COLLEGES, get_settings
 from smart_campus_assistant.state import Citation
 
+logger = logging.getLogger(__name__)
+
 # Stored in S3 Vectors metadata but not filterable (saves the 2 KB filterable budget).
+# Only applied when an index is created: an older index keeps "section" filterable, which fits the budget.
 PAGE_CONTENT_KEY = "_page_content"
-NON_FILTERABLE_KEYS = [PAGE_CONTENT_KEY, "source", "chunk_id"]
+NON_FILTERABLE_KEYS = [PAGE_CONTENT_KEY, "source", "chunk_id", "section"]
 
 SNIPPET_CHARS = 200
 
@@ -67,10 +76,8 @@ def clean_query(query: str, college: str | None = None) -> str:
     return cleaned or query
 
 
-def search(query: str, k: int | None = None, college: str | None = None) -> list[Document]:
-    """Similarity search; `college` is an optional college key such as "xyz"."""
-    settings = get_settings()
-    k = k or settings.retriever_k
+def vector_search(query: str, k: int, college: str | None = None) -> list[Document]:
+    """Similarity search over the vector store; `college` is an optional college key such as "xyz"."""
     store = get_vector_store()
     query = clean_query(query, college)
     if not college:
@@ -82,6 +89,46 @@ def search(query: str, k: int | None = None, college: str | None = None) -> list
         )
     # S3 Vectors uses a Mongo-style filter on filterable metadata keys.
     return store.similarity_search(query, k=k, filter={"college": {"$eq": college}})
+
+
+def keyword_search(query: str, k: int, college: str | None = None) -> list[Document]:
+    """BM25 over the local copies of the indexed chunks (docs, uploads, notices), best first."""
+    from smart_campus_assistant import local_search
+
+    return [doc for doc, _ in local_search.keyword_search(query, k, college)]
+
+
+def hybrid_search(query: str, k: int, college: str | None = None) -> list[Document]:
+    """Vector + BM25 candidates, fused by reciprocal rank, then reranked; top k.
+
+    Either side may fail on its own (no local documents, a vector store hiccup): the other side
+    still answers. Only when the vector store fails and BM25 finds nothing does the error surface.
+    """
+    n = ranking.candidate_count(k)
+    try:
+        keyword_docs = keyword_search(query, n, college)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Keyword search failed, using vector search only: %s", exc)
+        keyword_docs = []
+    try:
+        vector_docs = vector_search(query, n, college)
+    except Exception as exc:
+        if not keyword_docs:
+            raise
+        logger.warning("Vector search failed, using keyword search only: %s", exc)
+        vector_docs = []
+    # Keyword results first: for a chunk in both lists the fresh local copy is kept.
+    fused = ranking.reciprocal_rank_fusion([keyword_docs, vector_docs])
+    return ranking.rerank(query, fused, k)
+
+
+def search(query: str, k: int | None = None, college: str | None = None) -> list[Document]:
+    """Best chunks for `query` (hybrid or plain vector search, see SEARCH_MODE); `college` filters by key."""
+    settings = get_settings()
+    k = k or settings.retriever_k
+    if settings.search_mode == "vector":
+        return vector_search(query, k, college)
+    return hybrid_search(query, k, college)
 
 
 def _label(doc: Document) -> str:
@@ -109,13 +156,21 @@ def _snippet(text: str, limit: int = SNIPPET_CHARS) -> str:
     return cut + "..."
 
 
+def _body(doc: Document, section: str | None) -> str:
+    """Chunk text without its heading line, which the citation already shows as the section."""
+    first, sep, rest = doc.page_content.partition("\n")
+    return rest if sep and section and first.strip() == section.strip() and rest.strip() else doc.page_content
+
+
 def to_citation(doc: Document) -> Citation:
-    """Turn a retrieved chunk into a Citation with a short snippet."""
+    """Turn a retrieved chunk into a Citation: document, section number, heading path and a short snippet."""
     meta = doc.metadata
     page = meta.get("page")
+    section = ranking.section_of(doc)
     return Citation(
         source=meta.get("source", "unknown"),
         college=meta.get("college", "unknown"),
         page=int(page) if page is not None else None,
-        snippet=_snippet(doc.page_content),
+        snippet=_snippet(_body(doc, section)),
+        section=section,
     )

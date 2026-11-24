@@ -125,6 +125,8 @@ class Settings:
     answer_model_id: str
     embedding_model_id: str
     retriever_k: int
+    # "hybrid": vector + BM25 results fused (reciprocal rank fusion) and reranked; "vector": similarity only.
+    search_mode: str
     max_research_loops: int
     research_workers: int  # sub-questions researched at the same time on the deep path (1 = sequential)
     data_dir: Path  # college documents (markdown)
@@ -132,6 +134,15 @@ class Settings:
     users_file: Path  # legacy JSON accounts (imported into db_file once)
     db_file: Path  # SQLite: accounts, sessions, reset codes, self-registered students
     results_dir: Path
+
+
+SEARCH_MODES = ("hybrid", "vector")
+
+
+def search_mode_from_env() -> str:
+    """SEARCH_MODE, lower-cased; an unknown value falls back to "hybrid" instead of breaking search."""
+    mode = os.getenv("SEARCH_MODE", "hybrid").strip().lower()
+    return mode if mode in SEARCH_MODES else "hybrid"
 
 
 @lru_cache
@@ -146,6 +157,7 @@ def get_settings() -> Settings:
         answer_model_id=os.getenv("ANSWER_MODEL_ID", "us.amazon.nova-lite-v1:0"),
         embedding_model_id=os.getenv("EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"),
         retriever_k=int(os.getenv("RETRIEVER_K", "5")),
+        search_mode=search_mode_from_env(),
         max_research_loops=int(os.getenv("MAX_RESEARCH_LOOPS", "2")),
         research_workers=int(os.getenv("RESEARCH_WORKERS", "4")),
         data_dir=PROJECT_ROOT / "data" / "college",

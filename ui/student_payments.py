@@ -17,41 +17,34 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from ui.components import (  # noqa: E402
+    LEVEL_COLORS,
+    alert,
     as_of_date,
+    callout_html,
     days_text,
     effective_fee_status,
     empty_state,
+    fee_level,
     fee_status_label,
+    flash,
     format_rupees,
     get_college_name,
     get_student_safe,
-    hero_html,
+    hero,
     kpi_card_html,
+    kpi_row_html,
     nice_date,
     require_role,
     section_header,
+    show_flashes,
 )
-from ui.theme import BASELINE_COLOR, PERSONAL_COLOR, SIMPLE_COLOR, inject_css  # noqa: E402
+from ui.theme import BAD_COLOR, CONTENT_WIDTH, OK_COLOR, inject_css  # noqa: E402
 
 PAY_FAILED = "The payment could not be recorded. Please try again."
 FULL, CUSTOM = "Full due", "Custom amount"
-PAY_CSS = """
-<style>
-.pay-demo {
-  border: 1px dashed var(--sca-card-border, rgba(128,128,128,.45)); border-radius: 12px;
-  padding: .6rem .9rem; font-size: .88rem; margin: .4rem 0 .8rem 0;
-}
-.pay-receipt {
-  border: 1px solid var(--sca-card-border, rgba(128,128,128,.25)); border-radius: var(--sca-radius, 14px);
-  border-left: 4px solid #2E9E6B; padding: .8rem 1rem; margin: .4rem 0 .6rem 0;
-}
-.pay-receipt .title { font-weight: 650; font-size: 1rem; }
-.pay-receipt .line { font-size: .9rem; margin-top: .2rem; }
-.pay-receipt .line .k { color: var(--sca-muted, gray); margin-right: .35rem; }
-.pay-row { font-size: .92rem; font-weight: 600; }
-.pay-row .sub { font-size: .78rem; font-weight: 400; color: var(--sca-muted, gray); }
-</style>
-"""
+FLASH_KEY = "pay_flash"
+DEMO_NOTE = ("No money is transferred and no card number, UPI ID or bank detail is asked for or stored. "
+             "The payment mode is only a label on the receipt.")
 
 
 def _rs(amount) -> str:
@@ -105,24 +98,20 @@ def _pay(student_id: str, due: int, gen: int) -> None:
             actor_student_id=account.get("student_id"),
         )
     except (ValueError, PermissionError) as exc:  # RecordError messages are written for the UI
-        st.session_state["pay_flash"] = ("error", str(exc) or PAY_FAILED)
+        flash(FLASH_KEY, "error", str(exc) or PAY_FAILED)
         return
     except Exception:  # noqa: BLE001
-        st.session_state["pay_flash"] = ("error", PAY_FAILED)
+        flash(FLASH_KEY, "error", PAY_FAILED)
         return
     txn = ((updated.get("fees") or {}).get("transactions") or [{}])[-1]
     st.session_state["pay_last_receipt"] = txn.get("receipt_no")
-    st.session_state["pay_flash"] = ("success", f"Payment of {format_rupees(txn.get('amount'))} recorded.")
+    flash(FLASH_KEY, "success", f"Payment of {format_rupees(txn.get('amount'))} recorded. Your receipt is below.")
     st.session_state["pay_gen"] = gen + 1  # fresh form widgets on the next run
 
 
-inject_css(max_width="72rem")
+inject_css(max_width=CONTENT_WIDTH)
 user = require_role("student")
-st.markdown(PAY_CSS, unsafe_allow_html=True)
-st.markdown(
-    hero_html("Fees", "Pay fees", "See what is due this semester, make a demo payment and download your receipts."),
-    unsafe_allow_html=True,
-)
+hero("Student · fees", "Pay fees", "See what is due this semester, make a demo payment and download your receipts.")
 
 # Only ever the signed-in student's own ID, taken from the authenticated session.
 student_id = str(user.get("student_id") or "").upper()
@@ -132,10 +121,8 @@ if not record or not isinstance(record.get("fees"), dict):
                 "We could not find a fee record for your account. Please contact the accounts office.")
     st.stop()
 
-flash = st.session_state.pop("pay_flash", None)
-if flash:
-    icon = ":material/check_circle:" if flash[0] == "success" else ":material/error:"
-    getattr(st, flash[0])(flash[1], icon=icon)
+# The outcome of the last payment: one inline message.
+show_flashes(FLASH_KEY)
 
 fees = record["fees"]
 today = as_of_date(record)
@@ -152,25 +139,27 @@ try:
     late = fee_late_fee(due, fees.get("due_date"), today.isoformat())
     modes = list(_records.PAYMENT_MODES)
 except Exception:  # noqa: BLE001
-    st.error("Payments are not available right now. Please try again later.", icon=":material/error:")
+    alert("error", "Payments are not available right now. Please try again later.")
     st.stop()
 
 status = effective_fee_status(fees, today)  # the same status the dashboard and the assistant show
 overdue = status == "overdue" or late["days_overdue"] > 0
 if due:
-    due_sub = f"{fee_status_label(status)} · {fees.get('semester', '')}".strip(" ·")
+    due_sub = f"{fee_status_label('overdue' if overdue else status or 'due')} · {fees.get('semester', '')}".strip(" ·")
     date_value, date_sub = nice_date(fees.get("due_date")), days_text(fees.get("due_date"), today)
     late_sub = (f"{late['days_overdue']} day{'s' if late['days_overdue'] != 1 else ''} after the due date"
                 if late["late_fee"] else "Not overdue")
 else:
-    due_sub, date_value, date_sub, late_sub = "Fully paid", "—", "Nothing due", "Nothing due"
+    due_sub, date_value, date_sub, late_sub = "Paid · nothing due", "—", "Nothing due", "Nothing due"
+# The same colours as the dashboard and the sidebar card: amber while due, orange once overdue, green when paid.
+level = fee_level("overdue" if overdue else status, due)
 cards = [
-    kpi_card_html("Amount due", format_rupees(due), due_sub, BASELINE_COLOR if (due and overdue) else SIMPLE_COLOR),
-    kpi_card_html("Due date", date_value, date_sub, BASELINE_COLOR if (due and overdue) else PERSONAL_COLOR),
+    kpi_card_html("Amount due", format_rupees(due), due_sub, LEVEL_COLORS[level]),
+    kpi_card_html("Due date", date_value, date_sub, LEVEL_COLORS[level]),
     kpi_card_html("Late fee so far", format_rupees(late["late_fee"]), late_sub,
-                  BASELINE_COLOR if late["late_fee"] else SIMPLE_COLOR),
+                  BAD_COLOR if late["late_fee"] else OK_COLOR),
 ]
-st.markdown(f'<div class="sca-kpis">{"".join(cards)}</div>', unsafe_allow_html=True)
+st.markdown(kpi_row_html(cards), unsafe_allow_html=True)
 
 # Receipt of the payment just made (kept for this session until the next payment).
 last_no = st.session_state.get("pay_last_receipt")
@@ -190,11 +179,8 @@ section_header("Make a payment")
 if not due:
     empty_state("🎉", "Nothing to pay", "Your fees for this semester are fully paid. Your receipts are listed below.")
 else:
-    st.markdown(
-        '<div class="pay-demo">🧪 <b>Simulated demo payment.</b> No money is transferred and no card number, UPI ID '
-        "or bank detail is asked for or stored. The payment mode is only a label on the receipt.</div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown(callout_html(DEMO_NOTE, icon="🧪", kind="warn", title="Simulated demo payment."),
+                unsafe_allow_html=True)
     gen = int(st.session_state.get("pay_gen", 0))
     with st.form(f"pay_form_{gen}"):
         st.radio("How much do you want to pay?", [FULL, CUSTOM], key=f"pay_choice_{gen}", horizontal=True,
@@ -212,7 +198,7 @@ else:
 
 section_header("Past payments", f"{len(transactions)} payment{'s' if len(transactions) != 1 else ''} this semester")
 if not transactions:
-    st.caption("No payments recorded this semester.")
+    empty_state("🧾", "No payments recorded this semester", "Receipts appear here after each payment.", compact=True)
 for i, txn in enumerate(reversed(transactions)):
     info, action = st.columns([4, 1], vertical_alignment="center")
     sub = " · ".join(str(x) for x in (nice_date(txn.get("date")), txn.get("mode"), txn.get("receipt_no")) if x)

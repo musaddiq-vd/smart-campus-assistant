@@ -6,7 +6,7 @@ import re
 
 from langchain_core.messages import BaseMessage
 
-from smart_campus_assistant import models, prompts, usage
+from smart_campus_assistant import fee_calculator, grounding, models, prompts, usage
 from smart_campus_assistant.config import BRANCHES, COLLEGE_ALIASES, COLLEGES
 from smart_campus_assistant.state import AgentState, UsageRecord
 
@@ -54,17 +54,21 @@ def mentioned_branches(text: str) -> list[str]:
 
 
 def simple_answer(state: AgentState) -> dict:
-    """Retrieve once and answer once. Citation i matches context block [i+1]."""
+    """Retrieve once and answer once.
+
+    A total / cost question also gets the fee totals computed in code, as context block [1].
+    Nothing retrieved means nothing to ground an answer in: the standard not-found message is
+    returned without a model call. After the call, citations keep only the sources the answer
+    cites (renumbered to match), and an answer that cites nothing becomes the not-found message.
+    """
     from smart_campus_assistant import retriever  # lazy: lets fake mode stub the module
 
     question = state["question"]
-    docs = retriever.search(question)  # one college: no filter needed
+    docs = fee_calculator.with_fee_totals(question, retriever.search(question))  # one college: no filter
+    if not docs:
+        return {"docs": [], "answer": grounding.NOT_FOUND_MESSAGE, "citations": [], "usage": []}
     answer, record = call_llm(
         "answer", "simple_answer", prompts.simple_answer_messages(question, retriever.format_docs(docs))
     )
-    return {
-        "docs": docs,
-        "answer": answer,
-        "citations": [retriever.to_citation(d) for d in docs],
-        "usage": [record],
-    }
+    answer, citations = grounding.check_answer(answer, [retriever.to_citation(d) for d in docs])
+    return {"docs": docs, "answer": answer, "citations": citations, "usage": [record]}

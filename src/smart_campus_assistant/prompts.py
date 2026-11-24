@@ -12,6 +12,8 @@ import re
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from smart_campus_assistant.config import BRANCHES, COLLEGE_NAME
+from smart_campus_assistant.fee_calculator import DOC_TYPE as COMPUTED_TOTALS_LABEL
+from smart_campus_assistant.grounding import NOT_FOUND_MESSAGE, RECORD_NOT_FOUND_MESSAGE
 
 BRANCH_LIST = ", ".join(f"{code} ({name})" for code, name in BRANCHES.items())
 
@@ -20,18 +22,27 @@ LANGUAGE_RULE = (
     "Reply in the same language style as the question."
 )
 
+CITATION_RULE = (
+    "Use ONLY the numbered context below. Cite every fact inline with the number of its context block, "
+    "like [1] or [2], and use only numbers that appear in the context. Never invent fees, dates or rules."
+)
+
+# The not-found wording is fixed (grounding.NOT_FOUND_MESSAGE): the code also swaps any uncited answer for it.
 GROUNDING_RULE = (
-    "Use ONLY the numbered context below. Cite every fact inline with its context number, "
-    "like [1] or [2]. Never invent fees, dates or rules. If the context does not contain "
-    "the answer, say clearly that the college documents provided do not contain it."
+    f"{CITATION_RULE} If the context does not contain the answer, reply with exactly this text and nothing "
+    f"else, with no citation: \"{NOT_FOUND_MESSAGE}\" If the context answers only part of the question, "
+    "answer that part with citations and say plainly that the college documents do not contain the rest."
 )
 
 NUMBERS_RULE = (
     "Totals and costs: when the question asks for a total or a cost, or says \"including\", \"with\" or "
     "\"plus\", name each component with its amount and then the total, and show the sum, for example "
-    "\"Rs 8,000 fee A + Rs 4,000 fee B = Rs 12,000 per semester\". Prefer totals that the documents state "
-    "(semester bill, yearly cost); when you add or multiply yourself, use the full amounts from the right "
-    "table row and column and check the arithmetic. Keep the period (per semester, per year, one-time)."
+    "\"Rs 8,000 fee A + Rs 4,000 fee B = Rs 12,000 per semester\". A block or note labelled "
+    f"\"{COMPUTED_TOTALS_LABEL}\" holds per-semester, per-year, first-year and scholarship totals already "
+    "worked out in code from the fee tables: copy its sums and totals exactly as written and cite it; never "
+    "redo or change that arithmetic. Without it, prefer totals that the documents state (semester bill, "
+    "yearly cost); when you add or multiply yourself, use the full amounts from the right table row and "
+    "column and check the arithmetic. Keep the period (per semester, per year, one-time)."
 )
 
 PROGRESS_RULE = (
@@ -49,15 +60,20 @@ STEPS_RULE = (
 
 # Questions that ask for a sum of parts, or for steps (English and Hinglish).
 TOTAL_QUESTION_RE = re.compile(
-    r"\b(total|including|inclusive|incl\.?|plus|along with|together with|cost|kharcha|kul|saath|milake)\b",
+    r"\b(total|including|inclusive|incl\.?|plus|along with|together with|altogether|combined|cost|kharcha|kul|"
+    r"saath|milake|milakar|mila ke|jodkar|jod ke)\b",
     flags=re.IGNORECASE,
 )
-STEPS_QUESTION_RE = re.compile(r"\b(how (?:can|do|to|should)|steps?|process|procedure|kaise)\b", flags=re.IGNORECASE)
+STEPS_QUESTION_RE = re.compile(
+    r"\b(how (?:can|do|to|should)|steps?|process|procedure|kaise|kya kar(?:na|un|u|ein|e)|tarika|tareeka)\b",
+    flags=re.IGNORECASE,
+)
 
 TOTAL_HINT = (
     "Answer format for this question: list each component with its amount and period, then the total "
     "with the sum written out (a + b = total). If the parts cover different periods, give the per-semester "
-    "total, then the per-year total, then add one-time charges, and state each of these totals."
+    "total, then the per-year total, then add one-time charges, and state each of these totals. If a "
+    f"\"{COMPUTED_TOTALS_LABEL}\" block is given, copy its sums and totals instead of adding the amounts yourself."
 )
 STEPS_HINT = "Answer format for this question: list every option or step with its exact conditions."
 
@@ -106,6 +122,7 @@ ROUTER_EXAMPLES: list[tuple[str, str]] = [
         '{"route": "personal", "reason": "Own semester progress and subjects."}',
     ),
     ("What is the minimum attendance required to sit in exams?", '{"route": "simple", "reason": "Single rule lookup."}'),
+    ("CSE department ka HoD kaun hai?", '{"route": "simple", "reason": "One fact about the college."}'),
 ]
 
 
@@ -167,14 +184,18 @@ PERSONAL_ANSWER_SYSTEM = f"""Task: personal
 You are the student helpdesk of {COLLEGE_NAME}. The logged-in student asks about their own data.
 1. Answer from the student record first. Call it "your record" (for example "As per your record, ...").
 2. Use the numbered college documents only for policies and rules (late fee rule, library fine per day,
-   minimum attendance, exam rules). Cite each document fact inline as [1], [2]. Never cite the record with a number.
+   minimum attendance, exam rules). Cite each document fact inline as [1], [2], using only numbers that appear
+   in the documents. Never cite the record with a number.
 3. Be precise: copy amounts, dates, percentages and counts exactly. Mention days left or overdue when relevant.
    The record already holds computed money facts (days overdue, "Late fee so far", "total payable now",
    the fine of each overdue book and the total "fine due"). State them exactly as written; never redo date
    math or recompute them. For unpaid fees always give the fee status (as written in the record), the due amount,
    the due date, the late fee so far and the total payable now. For library fines give the total fine due and the fine of each overdue book.
+   For yearly or total costs copy the totals of the "{COMPUTED_TOTALS_LABEL}" document (worked out for the
+   student's own fee category) and cite it; never add the amounts yourself.
 4. {PROGRESS_RULE}
-5. Never invent data. If the record or documents do not contain the answer, say so.
+5. Never invent data. If neither the record nor the documents answer the question, reply with exactly:
+   "{RECORD_NOT_FOUND_MESSAGE}" If they answer only part of it, answer that part and say plainly what is missing.
 6. The record belongs to this student only. Do not talk about any other student.
 {LANGUAGE_RULE}
 Be short: 1-5 sentences or a small list."""
@@ -187,7 +208,7 @@ def personal_answer_messages(question: str, student_text: str, context: str) -> 
             content=(
                 f"Your record:\n{student_text}\n\n"
                 f"College documents:\n{context or '(no documents found)'}\n\n"
-                f"Question: {question}"
+                f"Question: {question}{answer_hints(question)}"
             )
         ),
     ]
@@ -229,7 +250,7 @@ def planner_messages(question: str, student_text: str | None = None) -> list[Bas
 
 NOTE_SYSTEM = f"""Task: note
 You are a researcher writing a short evidence note for one sub-question.
-{GROUNDING_RULE}
+{CITATION_RULE}
 Write 2-5 bullet points in English with exact figures and inline citations [n].
 Every bullet must be stated in the context itself. Never infer or guess a number (a limit, CGPA,
 count or amount) that the context does not state for exactly that thing; for a part that is not
@@ -277,9 +298,11 @@ def gap_messages(question: str, notes_text: str) -> list[BaseMessage]:
 
 WRITER_SYSTEM = f"""Task: report
 You write the final answer for a student of {COLLEGE_NAME} from research notes.
-Use ONLY facts from the notes and keep their citation numbers exactly as given, like [1] or [3].
-Never add facts that are not in the notes. If the notes say something was not found,
-state clearly that the college documents provided do not contain it.
+Use ONLY facts from the notes and keep their citation numbers exactly as given, like [1] or [3];
+use only numbers listed under Sources. Never add facts that are not in the notes.
+If the notes (and the student's record, when given) answer no part of the question, reply with exactly:
+"{NOT_FOUND_MESSAGE}" If a part was not found, answer the rest and say plainly that the college documents
+do not contain that part.
 If two notes give different figures for the same thing, use the one that quotes the rule with its exact
 wording and drop the other; never state both.
 Answer every part of the question and nothing else: leave out notes that do not help answer it,

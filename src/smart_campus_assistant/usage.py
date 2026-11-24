@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import math
 import time
 from contextlib import contextmanager
-from typing import Iterable, Iterator
+from typing import Iterable, Iterator, Mapping
 
 from langchain_core.messages import BaseMessage
 
@@ -22,14 +23,27 @@ PRICING_PER_1K: dict[str, tuple[float, float]] = {
 
 def price_for(model_id: str) -> tuple[float, float]:
     for key, price in PRICING_PER_1K.items():
-        if key in model_id:
+        if key in str(model_id or ""):
             return price
     return (0.0, 0.0)
 
 
+def _count(record: Mapping, key: str) -> float:
+    """A non-negative number from a usage record; 0 when it is missing or not a number.
+
+    Records come from the streamed graph updates, so a partial or odd record must count as
+    zero instead of breaking the per-question monitoring.
+    """
+    try:
+        value = float(record.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return value if value > 0 and math.isfinite(value) else 0.0
+
+
 def cost_usd(record: UsageRecord) -> float:
-    price_in, price_out = price_for(record["model_id"])
-    return record["input_tokens"] / 1000 * price_in + record["output_tokens"] / 1000 * price_out
+    price_in, price_out = price_for(record.get("model_id", ""))
+    return _count(record, "input_tokens") / 1000 * price_in + _count(record, "output_tokens") / 1000 * price_out
 
 
 def usage_from_message(node: str, model_id: str, message: BaseMessage, latency_ms: float) -> UsageRecord:
@@ -56,15 +70,15 @@ def timer() -> Iterator[dict]:
 
 
 def summarize_usage(records: Iterable[UsageRecord]) -> dict:
-    """Totals for one question: calls, tokens, cost and LLM latency."""
-    records = list(records)
-    input_tokens = sum(r["input_tokens"] for r in records)
-    output_tokens = sum(r["output_tokens"] for r in records)
+    """Totals for one question: calls, tokens, cost and LLM latency (anything that is not a record is skipped)."""
+    records = [r for r in (records or []) if isinstance(r, Mapping)]
+    input_tokens = int(sum(_count(r, "input_tokens") for r in records))
+    output_tokens = int(sum(_count(r, "output_tokens") for r in records))
     return {
         "llm_calls": len(records),
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": input_tokens + output_tokens,
         "cost_usd": round(sum(cost_usd(r) for r in records), 8),
-        "llm_latency_ms": round(sum(r["latency_ms"] for r in records), 1),
+        "llm_latency_ms": round(sum(_count(r, "latency_ms") for r in records), 1),
     }

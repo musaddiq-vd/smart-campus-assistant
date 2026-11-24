@@ -25,7 +25,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
-from smart_campus_assistant import models, student_data
+from smart_campus_assistant import fee_calculator, grounding, models, student_data
 from smart_campus_assistant.config import COLLEGE_KEY, COLLEGES
 from smart_campus_assistant.state import Citation
 
@@ -158,22 +158,33 @@ def fake_get_vector_store() -> OfflineVectorStore:
 
 
 def fake_format_docs(docs: list[Document]) -> str:
+    """Same layout as retriever.format_docs (a block without a page, like the computed totals, has no "p.")."""
+    if not docs:
+        return "No relevant documents found."
     blocks = []
     for i, doc in enumerate(docs, 1):
         m = doc.metadata
         name = COLLEGES.get(m.get("college", ""), m.get("college", "unknown"))
-        blocks.append(f"[{i}] ({name} | {m.get('doc_type')} | {m.get('source')} p.{m.get('page')})\n{doc.page_content}")
+        page = f" p.{m['page']}" if m.get("page") is not None else ""
+        blocks.append(f"[{i}] ({name} | {m.get('doc_type')} | {m.get('source')}{page})\n{doc.page_content}")
     return "\n\n".join(blocks)
 
 
 def fake_to_citation(doc: Document) -> Citation:
+    from smart_campus_assistant.ranking import section_of  # same heading the live citations carry
+
     m = doc.metadata
-    text = doc.page_content
+    section = section_of(doc)
+    # Like retriever.to_citation: the heading line is shown as the section, so the quote starts after it.
+    first, sep, rest = doc.page_content.partition("\n")
+    body = rest if sep and section and first.strip() == section.strip() and rest.strip() else doc.page_content
+    text = " ".join(body.split())
     return Citation(
         source=m.get("source", "unknown"),
         college=m.get("college", "unknown"),
         page=m.get("page"),
         snippet=text if len(text) <= 160 else text[:160].rsplit(" ", 1)[0] + "...",
+        section=section,
     )
 
 
@@ -375,10 +386,32 @@ _FOLLOW_UP_OPENER = re.compile(r"^\s*(and|or|but|so|then|what about|how about|sa
                                flags=re.IGNORECASE)
 
 
+def _swap_branch(rest: str, previous: str) -> str | None:
+    """"ECE ka?" after "What is the CSE tuition fee?" -> "What is the ECE tuition fee?" (None if it does not apply).
+
+    Only for a follow-up that names one other branch and nothing else, the case the rewrite prompt's own
+    example shows. Appending the old question instead would leave two branches in it and send a one-fact
+    question down the deep (comparison) path.
+    """
+    from smart_campus_assistant.local_search import tokenize
+    from smart_campus_assistant.simple_rag import BRANCH_ALIASES
+
+    new, old = _branch_hits(rest), _branch_hits(previous)
+    if len(new) != 1 or len(old) != 1 or new == old:
+        return None
+    if set(tokenize(rest)) - set(tokenize(" ".join(BRANCH_ALIASES.get(new[0], ())))):
+        return None  # the follow-up adds a topic of its own ("ECE ka hostel?")
+    swapped = previous
+    for alias in sorted(BRANCH_ALIASES.get(old[0], ()), key=len, reverse=True):
+        swapped = re.sub(rf"\b{re.escape(alias)}\b", new[0], swapped, flags=re.IGNORECASE)
+    return swapped
+
+
 def _fake_rewrite(human: str) -> str:
     """Offline stand-in for the follow-up rewrite: the follow-up plus the topic of the last question.
 
-    "aur ECE ka?" after "What is the CSE tuition fee?" becomes "ECE ka? (about: What is the CSE tuition fee?)".
+    "aur hostel?" after "What is the CSE tuition fee?" becomes "hostel? (about: What is the CSE tuition fee?)";
+    "aur ECE ka?" swaps the branch: "What is the ECE tuition fee?".
     Who the question is about stays exactly as the follow-up says, like the real rewrite.
     """
     follow_up = human.rsplit("Follow-up:", 1)[-1].split("\nStandalone question:", 1)[0].strip()
@@ -390,7 +423,7 @@ def _fake_rewrite(human: str) -> str:
     if not (FOLLOW_UP_START.search(follow_up) or REFERENCE_WORDS.search(follow_up)):
         return follow_up  # short but complete ("Hostel fee kitni hai?"): a new topic, kept as asked
     rest = _FOLLOW_UP_OPENER.sub("", follow_up).strip() or follow_up
-    return f"{rest} (about: {asked[-1].strip()})"
+    return _swap_branch(rest, asked[-1].strip()) or f"{rest} (about: {asked[-1].strip()})"
 
 
 class FakeCampusChatModel(BaseChatModel):
@@ -429,12 +462,14 @@ class FakeCampusChatModel(BaseChatModel):
         if task == "gap":
             return "none"
         if task == "personal":
-            question = human.rsplit("Question:", 1)[-1].strip()
+            question = _asked_question(human)
             record_text = human.split("Your record:", 1)[-1].split("College documents:", 1)[0].strip()
             docs_text = human.split("College documents:", 1)[-1].rsplit("Question:", 1)[0]
-            # A policy sentence is quoted only when it clearly matches (two topic words), else none at all.
-            facts = _context_facts(docs_text, limit=1, question=question, fallback=False, min_hits=2)
             answer = f"As per your record: {_record_line(question, record_text)}."
+            for n, fact in _totals_facts(docs_text, limit=1, question=question):
+                answer += f" Fee totals for your category: {fact} [{n}]."
+            # A policy sentence is quoted only when it clearly matches (two topic words), else none at all.
+            facts = _context_facts(_without_computed(docs_text), limit=1, question=question, fallback=False, min_hits=2)
             if facts:
                 n, fact = facts[0]
                 answer += f" College rule: {fact} [{n}]."
@@ -445,33 +480,68 @@ class FakeCampusChatModel(BaseChatModel):
                 return "Not found in the provided documents."
             return "\n".join(f"- {fact} [{n}]" for n, fact in facts)
         if task == "report":
-            notes = human.split("Research notes:")[-1].split("Sources:")[0]
-            bullets = list(dict.fromkeys(
-                line for line in notes.splitlines() if line.startswith("- ") and re.search(r"\[\d+\]", line)
-            ))
-            record_note = ""
-            # The student's record is added only when the question is about the student.
-            if "Your record" in human and _is_personal(_field(human, "Question")):
-                record_text = human.split("own data):", 1)[-1].split("Research notes:", 1)[0].strip()
-                record_note = f"\n\n**Your record:** {_record_line(_field(human, 'Question'), record_text)}."
-            if not bullets:
-                return "The college documents provided do not contain this information." + record_note
-            return (
-                "**Short answer:** here is what the college documents say.\n\n"
-                + "\n".join(bullets[:6])
-                + record_note
-                + "\n\n**Bottom line:** these points are quoted from the cited college documents; open the sources below for the full text."
-            )
-        # task == "answer" (simple path)
-        question = human.rsplit("Question:", 1)[-1].split("\n\nAnswer format", 1)[0].strip()
-        facts = _context_facts(human.split("Context:", 1)[-1].rsplit("Question:", 1)[0], question=question,
-                               fallback=False, min_coverage=0.5)
+            return _fake_report(human)
+        # task == "answer" (simple path): computed totals first for a total question, like the prompt asks.
+        question = _asked_question(human)
+        context = human.split("Context:", 1)[-1].rsplit("Question:", 1)[0]
+        facts = _totals_facts(context, question=question) or _context_facts(
+            context, question=question, fallback=False, min_coverage=0.5
+        )
         if not facts:
-            return "The college documents provided do not contain this information."
+            return grounding.NOT_FOUND_MESSAGE
         if len(facts) == 1:
             n, fact = facts[0]
             return f"According to the college documents: {fact} [{n}]."
         return "According to the college documents:\n" + "\n".join(f"- {fact} [{n}]" for n, fact in facts)
+
+
+def _asked_question(human: str) -> str:
+    """The question of an answer prompt, without the answer-format hints after it."""
+    return human.rsplit("Question:", 1)[-1].split("\n\nAnswer format", 1)[0].strip()
+
+
+def _is_computed_label(label: str) -> bool:
+    return fee_calculator.DOC_TYPE in label
+
+
+def _without_computed(context: str) -> str:
+    """The numbered context without its computed-totals block (numbers unchanged)."""
+    return "\n\n".join(m.group(0).strip() for m in _BLOCK_RE.finditer(context) if not _is_computed_label(m.group(2)))
+
+
+def _totals_facts(context: str, question: str, limit: int = 2) -> list[tuple[int, str]]:
+    """Best lines of the "computed fee totals" block for a total question ([] when there is no such block)."""
+    if not fee_calculator.wants_fee_totals(question):
+        return []
+    computed = "\n\n".join(m.group(0).strip() for m in _BLOCK_RE.finditer(context) if _is_computed_label(m.group(2)))
+    return _context_facts(computed, limit=limit, question=question) if computed else []
+
+
+def _fake_report(human: str) -> str:
+    """Offline writer: the cited note bullets (computed totals first), plus the record line for own questions."""
+    notes = human.split("Research notes:")[-1].split("Sources:")[0]
+    computed: list[str] = []
+    others: list[str] = []
+    for section in re.split(r"^### ", notes, flags=re.MULTILINE):
+        target = computed if section.lower().startswith(fee_calculator.DOC_TYPE) else others
+        target.extend(line for line in section.splitlines() if line.startswith("- ") and re.search(r"\[\d+\]", line))
+    bullets = list(dict.fromkeys(computed))[:3] + list(dict.fromkeys(others))[:6]
+    question = _field(human, "Question")
+    record_note = ""
+    # The student's record is added only when the question is about the student.
+    if "Your record" in human and _is_personal(question):
+        record_text = human.split("own data):", 1)[-1].split("Research notes:", 1)[0].strip()
+        record_note = f"**Your record:** {_record_line(question, record_text)}."
+    if not bullets:
+        if record_note:
+            return f"{record_note}\n\nThe college documents do not contain more on this question."
+        return grounding.NOT_FOUND_MESSAGE
+    return (
+        "**Short answer:** here is what the college documents say.\n\n"
+        + "\n".join(bullets)
+        + (f"\n\n{record_note}" if record_note else "")
+        + "\n\n**Bottom line:** these points are quoted from the cited college documents; open the sources below for the full text."
+    )
 
 
 # ---------------------------------------------------------------- enable / disable

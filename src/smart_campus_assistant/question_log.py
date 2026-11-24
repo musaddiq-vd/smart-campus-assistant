@@ -13,6 +13,9 @@ Privacy rules, enforced before anything is written:
 
 Rows live in the app SQLite database (table ``question_log``, created lazily here). Every
 public function takes an optional ``path`` so tests can use a temporary database.
+
+The same rules (``anonymous_fields``) and the same switch (``SCA_QUESTION_LOG=0`` turns it
+off) cover the answer ratings in ``feedback.py`` and the model usage rows in ``run_metrics.py``.
 """
 
 from __future__ import annotations
@@ -174,6 +177,51 @@ def _logging_paused() -> bool:
     return os.getenv("SCA_QUESTION_LOG", "").strip().lower() in ("0", "false", "no", "off")
 
 
+def logging_enabled() -> bool:
+    """The one switch for every anonymous Insights table (questions, answer feedback, model usage)."""
+    return not _logging_paused()
+
+
+def anonymous_fields(question: object, route: object, role: object = "student", branch: object = "") -> dict:
+    """The privacy rules of this module as one dict: role, branch, route, topic and the storable question.
+
+    Shared with the answer-feedback and model-usage tables, so every Insights table masks the
+    same way: no identity, identifiers masked, and a personal question only as a placeholder.
+    """
+    route = _clean_route(route)
+    is_admin = role == "admin"
+    return {
+        "role": "admin" if is_admin else "student",
+        "branch": "" if is_admin else _clean_branch(branch),  # admins have no branch
+        "route": route,
+        "topic": detect_topic(question),
+        "question": PERSONAL_PLACEHOLDER if route == "personal" else mask_question(question),
+    }
+
+
+def to_csv(columns: tuple[str, ...], rows: list[dict], yes_no: tuple[str, ...] = ()) -> str:
+    """CSV text with a header row; ``yes_no`` columns become "yes"/"no".
+
+    Cells that a spreadsheet would run as a formula are neutralised, since question and comment
+    text is typed by users.
+    """
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(columns)
+    for r in rows:
+        cells = []
+        for column in columns:
+            value = r.get(column, "")
+            if column in yes_no:
+                value = "yes" if value else "no"
+            value = "" if value is None else str(value)
+            if value[:1] in ("=", "+", "-", "@"):
+                value = "'" + value
+            cells.append(value)
+        writer.writerow(cells)
+    return out.getvalue()
+
+
 # ---------------------------------------------------------------- storage
 
 
@@ -209,10 +257,8 @@ def log_question(
     try:
         if not str(question or "").strip() or _logging_paused():
             return
-        route = _clean_route(route)
-        topic = detect_topic(question)
-        stored = PERSONAL_PLACEHOLDER if route == "personal" else mask_question(question)
-        if not stored:
+        fields = anonymous_fields(question, route, role, branch)
+        if not fields["question"]:
             return
         try:
             n_citations = max(0, int(citations or 0))
@@ -220,11 +266,11 @@ def log_question(
             n_citations = 0
         row = (
             db.now_iso(),
-            "admin" if role == "admin" else "student",
-            _clean_branch(branch) if role != "admin" else "",
-            route,
-            topic,
-            stored,
+            fields["role"],
+            fields["branch"],
+            fields["route"],
+            fields["topic"],
+            fields["question"],
             int(is_answered(answer)),
             n_citations,
         )
@@ -314,21 +360,7 @@ def export_rows(path: str | Path | None = None) -> list[dict]:
 
 def rows_to_csv(rows: list[dict]) -> str:
     """CSV text of exported rows; cells that a spreadsheet would run as a formula are neutralised."""
-    out = io.StringIO()
-    writer = csv.writer(out, lineterminator="\n")
-    writer.writerow(EXPORT_COLUMNS)
-    for r in rows:
-        cells = []
-        for column in EXPORT_COLUMNS:
-            value = r.get(column, "")
-            if column == "answered":
-                value = "yes" if value else "no"
-            value = str(value)
-            if value[:1] in ("=", "+", "-", "@"):
-                value = "'" + value
-            cells.append(value)
-        writer.writerow(cells)
-    return out.getvalue()
+    return to_csv(EXPORT_COLUMNS, rows, yes_no=("answered",))
 
 
 def clear(path: str | Path | None = None) -> int:

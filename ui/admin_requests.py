@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from html import escape
 from pathlib import Path
 
 import streamlit as st
@@ -13,24 +12,30 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from ui.components import (  # noqa: E402
+    alert,
     chip_html,
+    confirm_prompt,
     email_note,
     empty_state,
-    hero_html,
+    facts_html,
+    flash,
+    hero,
     kpi_card_html,
+    kpi_row_html,
     notify_students,
     require_role,
     section_header,
+    show_flashes,
 )
-from ui.theme import PERSONAL_COLOR, ROUTER_COLOR, SIMPLE_COLOR, inject_css  # noqa: E402
+from ui.theme import CONTENT_WIDTH, INFO_COLOR, OK_COLOR, WARN_COLOR, inject_css  # noqa: E402
 
-inject_css(max_width="72rem")
+inject_css(max_width=CONTENT_WIDTH)
 user = require_role("admin")
 
 try:
     from smart_campus_assistant import support_requests as requests_mod
 except Exception as exc:  # noqa: BLE001
-    st.error(f"The requests module could not be loaded: {type(exc).__name__}.")
+    alert("error", f"The requests module could not be loaded: {type(exc).__name__}.")
     st.stop()
 
 CATEGORIES = requests_mod.CATEGORIES
@@ -38,7 +43,7 @@ STATUSES = requests_mod.STATUSES
 ALL = "all"
 ADMIN_NAME = user.get("name") or user.get("email") or "Admin office"
 FILTER_KEYS = {"req_f_status": ALL, "req_f_category": ALL, "req_f_search": ""}
-FLASH_ICONS = {"success": ":material/check_circle:", "warning": ":material/warning:", "error": ":material/error:"}
+FLASH_KEY = "req_admin_flash"
 # Status buttons in the detail view: (target status, label, icon). "closed" goes through a confirm step.
 STATUS_ACTIONS = (
     ("open", "Reopen", ":material/undo:"),
@@ -53,7 +58,7 @@ for key, default in FILTER_KEYS.items():
 
 
 def _flash(kind: str, text: str) -> None:
-    st.session_state.setdefault("req_admin_flash", []).append((kind, text))
+    flash(FLASH_KEY, kind, text)
 
 
 def _reply_key(request_id: str) -> str:
@@ -118,23 +123,20 @@ def cancel_close() -> None:
 # ---------- page ----------
 
 def kpis_html(numbers: dict) -> str:
+    # Same colours as the status chips on the request cards: open = indigo, in progress = amber, resolved = green.
     cards = [
-        kpi_card_html("Open", str(numbers.get("open", 0)), "Waiting for a first reply", ROUTER_COLOR),
-        kpi_card_html("In progress", str(numbers.get("in_progress", 0)), "Being worked on", PERSONAL_COLOR),
+        kpi_card_html("Open", str(numbers.get("open", 0)), "Waiting for a first reply", INFO_COLOR),
+        kpi_card_html("In progress", str(numbers.get("in_progress", 0)), "Being worked on", WARN_COLOR),
         kpi_card_html("Resolved", str(numbers.get("resolved", 0)),
-                      f"{numbers.get('closed', 0)} closed · {numbers.get('total', 0)} in total", SIMPLE_COLOR),
+                      f"{numbers.get('closed', 0)} closed · {numbers.get('total', 0)} in total", OK_COLOR),
     ]
-    return f'<div class="sca-kpis">{"".join(cards)}</div>'
+    return kpi_row_html(cards)
 
 
 def student_info_html(request: dict) -> str:
     facts = [("Name", request.get("student_name")), ("Student ID", request.get("student_id")),
              ("Email", request.get("student_email")), ("Category", requests_mod.category_label(request.get("category")))]
-    rows = "".join(
-        f'<div class="fact"><span class="k">{escape(label)}</span><span class="v">{escape(str(value))}</span></div>'
-        for label, value in facts if value
-    )
-    return f'<div class="sca-req-facts">{rows}</div>'
+    return facts_html(facts, extra_class="sca-req-facts")  # old class name kept for CSS that targets it
 
 
 def render_detail(request: dict) -> None:
@@ -159,14 +161,11 @@ def render_detail(request: dict) -> None:
             st.button("Close request", key=f"req_admin_close_{rid}", icon=":material/lock:", on_click=ask_close,
                       args=(rid,), disabled=pending, width="stretch")
             if pending:
-                st.warning(f"Close {rid}? The student will not be able to reply on it again.",
-                           icon=":material/warning:")
-                yes, no = st.columns(2)
-                with yes:
-                    st.button("Yes, close", key=f"req_admin_close_yes_{rid}", type="primary",
-                              on_click=change_status, args=(rid, "closed"), width="stretch")
-                with no:
-                    st.button("Cancel", key=f"req_admin_close_no_{rid}", on_click=cancel_close, width="stretch")
+                confirm_prompt(
+                    f"Close {rid}? The student will not be able to reply on it again.",
+                    yes_label="Yes, close", yes_key=f"req_admin_close_yes_{rid}", on_yes=change_status,
+                    yes_args=(rid, "closed"), no_key=f"req_admin_close_no_{rid}", on_no=cancel_close,
+                )
     with main:
         section_header("Conversation", "The student's request and every reply, oldest first")
         st.markdown(requests_mod.thread_html(request, viewer_role="admin"), unsafe_allow_html=True)
@@ -194,11 +193,9 @@ def render_queue() -> None:
                          format_func=lambda c: "All categories" if c == ALL else CATEGORIES[c])
         with c3:
             st.text_input("Search", key="req_f_search", max_chars=100, placeholder="Subject, student name, ID or email")
-        apply, reset, _ = st.columns([1, 1, 4])
-        with apply:
-            st.form_submit_button("Apply filters", type="primary", icon=":material/filter_alt:", width="stretch")
-        with reset:
-            st.form_submit_button("Reset", on_click=reset_filters, width="stretch")
+        with st.container(horizontal=True, gap="small"):
+            st.form_submit_button("Apply filters", type="primary", icon=":material/filter_alt:")
+            st.form_submit_button("Reset", on_click=reset_filters, icon=":material/filter_alt_off:")
 
     status = st.session_state.get("req_f_status")
     category = st.session_state.get("req_f_category")
@@ -209,57 +206,40 @@ def render_queue() -> None:
             search=st.session_state.get("req_f_search") or None,
         )
     except requests_mod.RequestError as exc:
-        st.error(str(exc), icon=":material/error:")
+        alert("error", str(exc))
         return
     except Exception as exc:  # noqa: BLE001
-        st.error(f"The requests could not be loaded: {type(exc).__name__}.")
+        alert("error", f"The requests could not be loaded: {type(exc).__name__}.")
         return
 
     st.caption(f"{len(requests)} request{'s' if len(requests) != 1 else ''}, newest first")
     if not requests:
         empty_state("📭", "No requests here", "Nothing matches these filters. Student requests appear here.")
+    # Each action sits right under its card, as on the student page and the Notices page (in a narrow
+    # column beside the card the label was cut off on smaller screens).
     for request in requests:
-        card, action = st.columns([6, 1], vertical_alignment="center")
-        with card:
+        with st.container(gap="xsmall"):
             st.markdown(requests_mod.request_card_html(request, show_student=True), unsafe_allow_html=True)
-        with action:
-            st.button("Open", key=f"req_admin_open_{request['id']}", icon=":material/chat:", on_click=open_request,
-                      args=(request["id"],))
+            st.button("Open conversation", key=f"req_admin_open_{request['id']}", icon=":material/chat:",
+                      on_click=open_request, args=(request["id"],))
 
-
-PAGE_CSS = """
-<style>
-.sca-req-facts { display: flex; flex-direction: column; gap: .35rem; margin: .4rem 0 .2rem 0; }
-.sca-req-facts .fact {
-  display: flex; justify-content: space-between; gap: .75rem; font-size: .86rem; padding: .35rem .6rem;
-  border: 1px solid var(--sca-card-border, rgba(128,128,128,.25)); border-radius: 10px;
-  background: var(--sca-card-bg, transparent);
-}
-.sca-req-facts .k { color: var(--sca-muted, gray); white-space: nowrap; }
-.sca-req-facts .v { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
-</style>
-"""
 
 try:
     numbers = requests_mod.counts()
 except Exception as exc:  # noqa: BLE001
-    st.error(f"The requests could not be loaded: {type(exc).__name__}.")
+    alert("error", f"The requests could not be loaded: {type(exc).__name__}.")
     st.stop()
 
 waiting = numbers.get("open", 0)
-st.markdown(
-    hero_html(
-        "Admin · help desk", "Requests",
-        "Students raise requests about fees, hostel, library, exams and certificates. Reply and track them here.",
-        chips=[chip_html(f"{waiting} waiting for a reply", "demo" if waiting else "live")],
-    ),
-    unsafe_allow_html=True,
+hero(
+    "Admin · help desk", "Requests",
+    "Students raise requests about fees, hostel, library, exams and certificates. Reply and track them here.",
+    chips=[chip_html(f"{waiting} waiting for a reply", "warn" if waiting else "ok")],
 )
-st.markdown(requests_mod.REQUESTS_CSS + PAGE_CSS, unsafe_allow_html=True)
+st.markdown(requests_mod.REQUESTS_CSS, unsafe_allow_html=True)
 
-for kind, text in st.session_state.pop("req_admin_flash", []):
-    st.toast(text, icon=FLASH_ICONS[kind])
-    getattr(st, kind)(text, icon=FLASH_ICONS[kind])
+# The outcome of the last action: one inline message (no toast on top of it).
+show_flashes(FLASH_KEY)
 
 st.markdown(kpis_html(numbers), unsafe_allow_html=True)
 
@@ -269,10 +249,10 @@ if open_id:
     try:
         opened = requests_mod.get_request(open_id)
     except Exception as exc:  # noqa: BLE001
-        st.error(f"The request could not be loaded: {type(exc).__name__}.")
+        alert("error", f"The request could not be loaded: {type(exc).__name__}.")
     if opened is None:
         st.session_state.pop("req_admin_open_id", None)
-        st.warning("That request is not available.", icon=":material/warning:")
+        alert("warning", "That request is not available.")
 
 if opened:
     render_detail(opened)

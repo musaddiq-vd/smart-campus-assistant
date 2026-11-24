@@ -4,6 +4,7 @@ headless = true
 [browser]
 gatherUsageStats = false
 
+# One brand colour and type scale for both themes; ui/theme.py builds every custom card on top of it.
 [theme]
 primaryColor = "#5B5BD6"
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
@@ -12,6 +13,8 @@ codeFont = "monospace"
 baseRadius = "0.6rem"
 buttonRadius = "0.6rem"
 showSidebarBorder = true
+# Inputs get a visible border, so fields stand out on cards in both themes.
+showWidgetBorder = true
 chartCategoricalColors = ["#5B5BD6", "#D95926", "#0E9F6E", "#7C3AED"]
 
 [theme.light]
@@ -19,9 +22,17 @@ backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F6F7FB"
 textColor = "#1A1C2E"
 borderColor = "#E4E6EF"
+# Darker than the brand colour so link text keeps AA contrast on white.
+linkColor = "#4747C2"
+dataframeBorderColor = "#E4E6EF"
+dataframeHeaderBackgroundColor = "#F3F4F9"
 
 [theme.dark]
 backgroundColor = "#0F1117"
 secondaryBackgroundColor = "#181B24"
 textColor = "#E8E9F0"
 borderColor = "#2A2E3B"
+# The brand indigo is too dark for link text on the dark background (3.5:1); this one is 8:1.
+linkColor = "#A5A6F6"
+dataframeBorderColor = "#2A2E3B"
+dataframeHeaderBackgroundColor = "#1D2130"

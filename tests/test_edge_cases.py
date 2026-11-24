@@ -89,6 +89,24 @@ def test_new_notice_is_searchable_at_once_and_gone_after_delete(fake_mode, notic
     assert not any("Seminar Hall 2" in d.page_content for d in retriever.search("robotics club orientation"))
 
 
+def test_uploaded_document_is_answerable_at_once_and_gone_after_delete(fake_mode, notices_file, tmp_path, monkeypatch):
+    from smart_campus_assistant import documents
+
+    monkeypatch.setenv("SCA_UPLOADS_DIR", str(tmp_path / "uploads"))
+    question = "What are the robotics lab timings?"
+    assert "09:00" not in graph_module.run_question(question)["answer"]
+    info, indexed, _ = documents.publish_document(
+        "Robotics Lab.md", b"# Robotics Lab\n\n## Timings\n\nThe robotics lab is open from 09:00 to 18:00 on weekdays.",
+        live=False,
+    )
+    assert indexed
+    result = graph_module.run_question(question)
+    assert "09:00" in result["answer"]
+    assert any(c["source"] == "robotics_lab.md" for c in result["citations"])
+    assert documents.remove_document(info["name"], live=False)[0]
+    assert "09:00" not in graph_module.run_question(question)["answer"]
+
+
 def test_fake_search_falls_back_to_builtin_docs(monkeypatch):
     monkeypatch.setattr(local_search, "chunk_count", lambda: 0)
     docs = fakes.fake_search("library fine")

@@ -101,10 +101,37 @@ def test_no_history_or_standalone_question_makes_no_call(fake_mode):
 
 
 def test_follow_up_is_rewritten_with_one_cheap_call(fake_mode):
-    question, record = followup.rewrite_follow_up("aur ECE ka?", [turn("What is the CSE tuition fee?")])
-    assert question == "ECE ka? (about: What is the CSE tuition fee?)"
+    question, record = followup.rewrite_follow_up("aur hostel ka?", [turn("What is the CSE tuition fee?")])
+    assert question == "hostel ka? (about: What is the CSE tuition fee?)"
     assert record["node"] == "contextualize"
     assert fakes.CALL_LOG == [("router", "rewrite")]
+
+
+def test_fake_rewrite_swaps_a_bare_branch_follow_up(fake_mode):
+    """Like the rewrite prompt's own example; keeping both branches would make it a comparison."""
+    question, _ = followup.rewrite_follow_up("aur ECE ka?", [turn("What is the CSE tuition fee?")])
+    assert question == "What is the ECE tuition fee?"
+    result = graph_module.run_question("aur ECE ka?", history=[turn("What is the CSE tuition fee?")])
+    assert result["route"] == "simple" and result["question"] == "What is the ECE tuition fee?"
+    # A follow-up with a topic of its own keeps the old question as context instead.
+    question, _ = followup.rewrite_follow_up("aur ECE ka hostel?", [turn("What is the CSE tuition fee?")])
+    assert question == "ECE ka hostel? (about: What is the CSE tuition fee?)"
+
+
+@pytest.mark.parametrize("question", [
+    "Is there a gym in the hostel?",
+    "Are there any scholarships for girls?",
+    "Is the caution deposit a one-time payment?",
+    "Can I borrow more than 4 books?",
+    "What is the fee for one semester of hostel?",
+])
+def test_existence_numbers_and_comparisons_are_not_references(question):
+    assert not followup.looks_like_follow_up(question)
+
+
+@pytest.mark.parametrize("question", ["Is there a late fee for it?", "Which one is cheaper?", "Tell me more"])
+def test_real_references_next_to_those_words_still_count(question):
+    assert followup.looks_like_follow_up(question)
 
 
 @pytest.mark.parametrize("failure", ["error", "blank"])

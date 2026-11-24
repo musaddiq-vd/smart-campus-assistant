@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from smart_campus_assistant import prompts, student_data
+from smart_campus_assistant import fee_calculator, grounding, prompts, student_data
 from smart_campus_assistant.config import BRANCHES, COLLEGE_NAME
 from smart_campus_assistant.simple_rag import call_llm, mentioned_branches
 from smart_campus_assistant.state import AgentState
@@ -41,8 +41,13 @@ THING_NOUNS = re.compile(
     r"\b(exams?|papers?|hostels?|mess|library|books?|courses?|subjects?|branch(?:es)?|scholarships?|placements?|"
     r"semesters?|labs?|rules?|college|departments?|clubs?|companies|company|programmes?|programs?)\b"
 )
+# Topics that live in a student's record. The router uses the same list (router.PERSONAL_TOPICS), so a
+# question it sends here as "someone else's record" ("his scholarship") is also refused here, instead of
+# being answered from the asker's own record.
 RECORD_TOPICS = re.compile(
-    r"\b(fees?|dues?|books?|fine|attendance|results?|cgpa|sgpa|marks|backlogs?|exams?|hall ticket|room|record)\b"
+    r"\b(fee|fees|dues?|pending|paid|payment|receipt|scholarship|books?|issued?|fine|fines|library|"
+    r"attendance|result|results|cgpa|sgpa|gpa|marks|backlogs?|exams?|hall ticket|admit card|"
+    r"hostel room|room|roll|semesters?|semister|sem|subjects?|subjests?|courses?|record)\b"
 )
 
 
@@ -83,7 +88,12 @@ def asks_about_other_student(question: str, own_record: dict) -> bool:
 
 
 def personal_answer(state: AgentState) -> dict:
-    """One answer-model call over the student's own record and up to POLICY_DOCS_K policy docs."""
+    """One answer-model call over the student's own record and up to POLICY_DOCS_K policy docs.
+
+    A total / cost question also gets the fee totals computed for the student's OWN fee category and
+    hostel status. Citations are documents only (the record is never cited with a number); an answer
+    that cites no document and uses nothing from the record becomes the standard not-found message.
+    """
     from smart_campus_assistant import retriever  # lazy: lets fake mode stub the module
 
     question = state["question"]
@@ -94,14 +104,15 @@ def personal_answer(state: AgentState) -> dict:
         return {"answer": REFUSAL_MESSAGE, "citations": [], "docs": []}
 
     docs = retriever.search(branch_scoped_query(question, record), k=POLICY_DOCS_K)
+    docs = fee_calculator.with_fee_totals(question, docs, record=record)
+    student_text = student_data.student_context(record)
     answer, usage_record = call_llm(
         "answer",
         "personal_answer",
-        prompts.personal_answer_messages(question, student_data.student_context(record), retriever.format_docs(docs)),
+        prompts.personal_answer_messages(question, student_text, retriever.format_docs(docs)),
     )
-    return {
-        "docs": docs,
-        "answer": answer,
-        "citations": [retriever.to_citation(d) for d in docs],  # doc citations only; the record is not cited
-        "usage": [usage_record],
-    }
+    answer, citations = grounding.check_answer(
+        answer, [retriever.to_citation(d) for d in docs], record_text=student_text,
+        not_found=grounding.RECORD_NOT_FOUND_MESSAGE,
+    )
+    return {"docs": docs, "answer": answer, "citations": citations, "usage": [usage_record]}

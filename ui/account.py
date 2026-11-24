@@ -16,9 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ui.components import hero_html, require_role  # noqa: E402
+from ui.components import LOCKOUT_ICON, alert, facts_html, hero, require_role, role_badge_html  # noqa: E402
 from ui.login import _lockout_message, get_throttle, load_auth, problems_text  # noqa: E402
-from ui.theme import inject_css  # noqa: E402
+from ui.theme import NARROW_WIDTH, inject_css  # noqa: E402
 
 FIELDS = ("pw_current", "pw_new", "pw_confirm")
 DEFAULT_MIN_LENGTH = 8
@@ -153,25 +153,30 @@ def _change_password() -> None:
 
 # ---------- page ----------
 
+def account_facts_html(user: dict) -> str:
+    """Who is signed in: name, email and (students) the Student ID."""
+    facts = [("Name", user.get("name")), ("Email", user.get("email")),
+             ("Student ID", user.get("student_id") if user.get("role") == "student" else None)]
+    return facts_html(facts)
+
+
 def render_page() -> None:
-    inject_css(max_width="40rem")
+    inject_css(max_width=NARROW_WIDTH)
     user = require_role("student", "admin")
     auth_module, _ = load_auth()
     min_len = min_length(auth_module) if auth_module is not None else DEFAULT_MIN_LENGTH
 
     must_change = bool(user.get("must_change_password"))
-
-    st.markdown(
-        hero_html("Account", str(user.get("name") or user.get("email") or ""),
-                  f"Signed in as {user.get('email') or ''}. Change your password below."),
-        unsafe_allow_html=True,
-    )
+    role = "Admin" if user.get("role") == "admin" else "Student"
+    hero(f"{role} · account", "Account", f"Signed in as {user.get('email') or ''}. Change your password below.",
+         chips=[role_badge_html(user.get("role"))])
     if must_change:
         st.info(
             "**Set your own password.** You signed in with a temporary password from the admin office. "
             "Enter that temporary password as the current password, then choose a new one.",
             icon=":material/password:",
         )
+    st.markdown(account_facts_html(user), unsafe_allow_html=True)
 
     with st.form("password_form", border=True, enter_to_submit=True):
         st.markdown("**Set a new password**" if must_change else "**Change password**")
@@ -183,13 +188,11 @@ def render_page() -> None:
         st.form_submit_button("Change password", type="primary", on_click=_change_password, icon=":material/key:",
                               key="pw_submit")
 
+    # The outcome, right under the form it belongs to: one inline message.
     result = st.session_state.pop("pw_result", None)
     if result:
-        if result["kind"] == "success":
-            st.success(result["text"], icon=":material/check_circle:")
-        else:
-            icon = ":material/lock_clock:" if result["text"].startswith("Too many") else ":material/error:"
-            st.error(result["text"], icon=icon)
+        lockout = result["kind"] != "success" and result["text"].startswith("Too many")
+        alert(result["kind"], result["text"], icon=LOCKOUT_ICON if lockout else None)
 
 
 # Streamlit runs page scripts as __main__; importing this module (tests) renders nothing.

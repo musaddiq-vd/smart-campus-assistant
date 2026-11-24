@@ -12,6 +12,7 @@ data/chats/
 data/app.db
 data/app.db-*
 data/demo_credentials.csv
+data/uploads/
 
 # Local assistant notes (keep off GitHub)
 CLAUDE.md

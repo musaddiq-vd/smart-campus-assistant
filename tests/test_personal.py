@@ -187,6 +187,22 @@ def test_other_student_is_refused(fake_mode, question):
     assert ("answer", "personal") not in fakes.CALL_LOG
 
 
+@pytest.mark.parametrize("question", [
+    "What is his scholarship amount?",
+    "Uske dost ka semester kaunsa hai?",
+    "Which subjects does her timetable have?",
+])
+def test_other_student_topics_match_the_router(fake_mode, question):
+    """Topics the router sends to personal as someone else's record are refused, not answered from the asker's."""
+    from smart_campus_assistant import router
+
+    assert router.heuristic_route(question)[0] == "personal"
+    result = graph_module.run_question(question, student_id="XYZ24CSE001")
+    assert result["answer"] == personal.REFUSAL_MESSAGE
+    assert ("answer", "personal") not in fakes.CALL_LOG
+    assert router.PERSONAL_TOPICS is personal.RECORD_TOPICS
+
+
 def test_own_id_and_name_are_allowed(students_file):
     own = student_data.get_student("XYZ24CSE001")
     assert not personal.asks_about_other_student("Is XYZ24CSE001 fee paid? I am Ananya Rao.", own)

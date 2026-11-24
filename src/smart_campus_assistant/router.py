@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 
 from smart_campus_assistant import followup, prompts
 from smart_campus_assistant.config import ROUTES
-from smart_campus_assistant.personal import mentions_other_person
+from smart_campus_assistant.personal import RECORD_TOPICS, mentions_other_person
 from smart_campus_assistant.simple_rag import call_llm, mentioned_branches
 from smart_campus_assistant.state import AgentState
 from smart_campus_assistant.student_data import STUDENT_ID_RE, students_named_in
@@ -17,7 +17,10 @@ DEEP_PATTERNS = [
     r"\bbest\b",
     r"\bbetter\b",
     r"\bwhich branch\b",
-    r"\bkaun\w*\b",
+    # Hinglish "which branch" / "better". Bare "kaun" also means "who" ("HoD kaun hai?"), a simple lookup.
+    r"\bkaun\w*\s+(?:sa\s+|si\s+|se\s+)?branch\b",
+    r"\b(?:behtar|zyada (?:accha|achha|acchi|achhi))\b",
+    r"\b(?:farak|fark|tulna)\b",
     r"\bvs\.?\b",
     r"\bversus\b",
     r"\bdifference\b",
@@ -42,12 +45,9 @@ FIRST_PERSON = re.compile(
     r"mera|meri|mere|mujhe|mujhko|maine|apna|apni|apne|hamara|hamari)\b"
 )
 
-# Topics that live in a student's own record.
-PERSONAL_TOPICS = re.compile(
-    r"\b(fee|fees|dues?|pending|paid|payment|receipt|scholarship|books?|issued?|fine|fines|library|"
-    r"attendance|result|results|cgpa|sgpa|gpa|marks|backlogs?|exams?|hall ticket|admit card|"
-    r"hostel room|room|roll|semesters?|semister|sem|subjects?|subjests?|courses?)\b"
-)
+# Topics that live in a student's own record: the same list the personal node uses to refuse
+# questions about someone else's record, so routing and refusing never disagree.
+PERSONAL_TOPICS = RECORD_TOPICS
 
 
 # Someone else's record ("uski fees", "her attendance"): routed to personal so that node can refuse.
@@ -61,16 +61,27 @@ EMPTY_QUESTION_MESSAGE = (
 )
 
 
+# Advice and comparison wording. With "I / me" but no "my" it asks for advice, not about the record:
+# "Mujhe 2 lakh budget mein kaunsi branch better rahegi, scholarship ke saath?" is deep (a router example).
+ADVICE = re.compile(
+    r"\b(compar\w*|better|best|behtar|vs\.?|versus|recommend\w*|which branch)\b|\bkaun\w*\s+(?:sa\s+|si\s+|se\s+)?branch\b"
+)
+OWN_POSSESSIVE = re.compile(r"\b(my|mine|mera|meri|mere|apna|apni|apne|hamara|hamari)\b")
+
+
 def is_personal(question: str) -> bool:
-    """A student ID, or a person (me / someone else / a known student's name) + a record topic."""
+    """A student ID, or a person (me / someone else / a known student's name) + a record topic.
+
+    First-person advice without "my" ("which branch is better for me?") is not about the record.
+    """
     text = question.lower()
     if STUDENT_ID_RE.search(question):
         return True
     if not PERSONAL_TOPICS.search(text):
         return False
-    return bool(
-        FIRST_PERSON.search(text) or mentions_other_person(text, THIRD_PERSON) or students_named_in(question)
-    )
+    if mentions_other_person(text, THIRD_PERSON) or students_named_in(question):
+        return True
+    return bool(FIRST_PERSON.search(text)) and not (ADVICE.search(text) and not OWN_POSSESSIVE.search(text))
 
 
 def heuristic_route(question: str) -> tuple[str, str]:

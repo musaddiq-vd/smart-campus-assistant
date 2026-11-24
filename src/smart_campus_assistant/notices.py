@@ -266,9 +266,10 @@ def all_notice_documents() -> list[Document]:
 def index_notice(notice: dict) -> tuple[bool, str]:
     """Add one notice's chunks to the vector store (ids = chunk_ids). Never raises."""
     try:
-        from smart_campus_assistant import retriever
+        from smart_campus_assistant import ingest, retriever
 
-        docs = notice_documents([notice])
+        # The section (citation heading) is the notice's title line, as in a full ingest.
+        docs = ingest.with_sections(notice_documents([notice]))
         if not docs:
             return False, "Notice has no text to index."
         store = retriever.get_vector_store()

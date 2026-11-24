@@ -11,30 +11,40 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ui.components import chip_html, empty_state, hero_html, require_role, section_header  # noqa: E402
-from ui.theme import inject_css  # noqa: E402
+from ui.components import (  # noqa: E402
+    alert,
+    chip_html,
+    confirm_prompt,
+    empty_state,
+    flash,
+    hero,
+    require_role,
+    section_header,
+    show_flashes,
+)
+from ui.theme import CONTENT_WIDTH, inject_css  # noqa: E402
 
-inject_css(max_width="72rem")
+inject_css(max_width=CONTENT_WIDTH)
 user = require_role("student")
 
 try:
     from smart_campus_assistant import support_requests as requests_mod
 except Exception as exc:  # noqa: BLE001
-    st.error(f"The requests module could not be loaded: {type(exc).__name__}.")
+    alert("error", f"The requests module could not be loaded: {type(exc).__name__}.")
     st.stop()
 
 # Only ever the signed-in student's own ID, taken from the authenticated session.
 STUDENT_ID = str(user.get("student_id") or "").strip().upper()
 CATEGORIES = requests_mod.CATEGORIES
 FORM_KEYS = {"req_new_category": "fees", "req_new_subject": "", "req_new_body": ""}
-FLASH_ICONS = {"success": ":material/check_circle:", "warning": ":material/warning:", "error": ":material/error:"}
+FLASH_KEY = "req_flash"
 
 for key, default in FORM_KEYS.items():
     st.session_state.setdefault(key, default)
 
 
 def _flash(kind: str, text: str) -> None:
-    st.session_state.setdefault("req_flash", []).append((kind, text))
+    flash(FLASH_KEY, kind, text)
 
 
 def _reply_key(request_id: str) -> str:
@@ -135,15 +145,14 @@ def render_detail(request: dict) -> None:
         st.form_submit_button("Send reply", type="primary", icon=":material/send:", on_click=send_reply, args=(rid,))
 
     pending = st.session_state.get("req_confirm_close") == rid
-    st.button("Close this request", key=f"req_close_{rid}", icon=":material/task_alt:", on_click=ask_close,
+    st.button("Close request", key=f"req_close_{rid}", icon=":material/lock:", on_click=ask_close,
               args=(rid,), disabled=pending)
     if pending:
-        st.warning(f"Close {rid}? You will not be able to reply on it again.", icon=":material/warning:")
-        yes, no, _ = st.columns([1, 1, 4])
-        with yes:
-            st.button("Yes, close", key=f"req_close_yes_{rid}", type="primary", on_click=confirm_close, args=(rid,))
-        with no:
-            st.button("Cancel", key=f"req_close_no_{rid}", on_click=cancel_close)
+        confirm_prompt(
+            f"Close {rid}? You will not be able to reply on it again.",
+            yes_label="Yes, close", yes_key=f"req_close_yes_{rid}", on_yes=confirm_close, yes_args=(rid,),
+            no_key=f"req_close_no_{rid}", on_no=cancel_close,
+        )
 
 
 def render_new_form(active: int) -> None:
@@ -172,32 +181,29 @@ def render_list(requests: list[dict]) -> None:
         empty_state("📮", "No requests yet", "Raise a request and the admin office will reply here.")
     # The list sits in a half-width column, so the button goes under its card (beside it, it got squeezed).
     for request in requests:
-        st.markdown(requests_mod.request_card_html(request), unsafe_allow_html=True)
-        st.button("Open conversation", key=f"req_open_{request['id']}", icon=":material/chat:",
-                  on_click=open_request, args=(request["id"],))
+        with st.container(gap="xsmall"):  # card and button stay visibly together
+            st.markdown(requests_mod.request_card_html(request), unsafe_allow_html=True)
+            st.button("Open conversation", key=f"req_open_{request['id']}", icon=":material/chat:",
+                      on_click=open_request, args=(request["id"],))
 
 
 try:
     my_requests = requests_mod.list_requests(student_id=STUDENT_ID) if STUDENT_ID else []
 except Exception as exc:  # noqa: BLE001
-    st.error(f"Your requests could not be loaded: {type(exc).__name__}.")
+    alert("error", f"Your requests could not be loaded: {type(exc).__name__}.")
     st.stop()
 
 active_count = sum(1 for r in my_requests if r["status"] != "closed")
-st.markdown(
-    hero_html(
-        "Help desk", "My requests",
-        "Raise a request to the admin office (fees, hostel, library, exams, certificates) and follow the replies here.",
-        chips=[chip_html(f"{active_count} active", "live" if active_count else ""),
-               chip_html(f"{len(my_requests)} total")],
-    ),
-    unsafe_allow_html=True,
+hero(
+    "Student · help desk", "My requests",
+    "Raise a request to the admin office (fees, hostel, library, exams, certificates) and follow the replies here.",
+    chips=[chip_html(f"{active_count} active", "info" if active_count else ""),
+           chip_html(f"{len(my_requests)} total")],
 )
 st.markdown(requests_mod.REQUESTS_CSS, unsafe_allow_html=True)
 
-for kind, text in st.session_state.pop("req_flash", []):
-    st.toast(text, icon=FLASH_ICONS[kind])
-    getattr(st, kind)(text, icon=FLASH_ICONS[kind])
+# The outcome of the last action: one inline message (no toast on top of it).
+show_flashes(FLASH_KEY)
 
 if not STUDENT_ID:
     empty_state("🗂️", "Your record is not available",
@@ -211,10 +217,10 @@ if open_id:
         # The backend returns None unless this student owns the request.
         opened = requests_mod.get_request(open_id, student_id=STUDENT_ID)
     except Exception as exc:  # noqa: BLE001
-        st.error(f"The request could not be loaded: {type(exc).__name__}.")
+        alert("error", f"The request could not be loaded: {type(exc).__name__}.")
     if opened is None:
         st.session_state.pop("req_open_id", None)
-        st.warning("That request is not available.", icon=":material/warning:")
+        alert("warning", "That request is not available.")
 
 if opened:
     render_detail(opened)

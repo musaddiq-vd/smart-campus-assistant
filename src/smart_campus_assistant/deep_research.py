@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from langchain_core.documents import Document
 
-from smart_campus_assistant import prompts, student_data
+from smart_campus_assistant import fee_calculator, grounding, prompts, student_data
 from smart_campus_assistant.config import get_settings
 from smart_campus_assistant.personal import branch_scoped_query
 from smart_campus_assistant.simple_rag import call_llm
@@ -25,7 +25,7 @@ from smart_campus_assistant.state import AgentState, Citation, Note, UsageRecord
 MAX_PLAN = 5  # plan size: the question itself + up to 4 planner sub-questions
 MAX_GAP_QUESTIONS = 2
 MAX_SUB_QUESTIONS = 6  # hard cap on plan size across all loops (keeps deep cost bounded)
-CITE_RE = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
+CITE_RE = grounding.CITE_RE
 
 
 # ---------------------------------------------------------------- parsing helpers
@@ -65,29 +65,9 @@ def parse_list(text: str, limit: int = MAX_PLAN) -> list[str]:
     return unique[:limit]
 
 
-def _cited_numbers(text: str) -> list[int]:
-    """Citation numbers in order of first appearance."""
-    out: list[int] = []
-    for group in CITE_RE.findall(text):
-        for n in group.split(","):
-            n = int(n.strip())
-            if n not in out:
-                out.append(n)
-    return out
-
-
-def _renumber(text: str, mapping: dict[int, int]) -> str:
-    """Rewrite [a, b] markers with ``mapping``; unknown numbers are dropped."""
-
-    def repl(m: re.Match) -> str:
-        new = [mapping[int(n.strip())] for n in m.group(1).split(",") if int(n.strip()) in mapping]
-        return "[" + ", ".join(str(n) for n in dict.fromkeys(new)) + "]" if new else ""
-
-    return CITE_RE.sub(repl, text)
-
-
-def _citation_key(c: Citation) -> tuple:
-    return (c.get("source"), c.get("page"), c.get("snippet", "")[:80])
+_cited_numbers = grounding.cited_numbers  # citation numbers in order of first appearance
+_renumber = grounding.renumber  # rewrite [a, b] markers with a mapping; unknown numbers are dropped
+_citation_key = grounding.citation_key  # same identity as the chat page's source de-duplication
 
 
 def _pending(state: AgentState) -> list[str]:
@@ -127,11 +107,12 @@ def _research_one(question: str, sub_q: str, own_record: dict | None) -> tuple[N
         "answer", "researcher", prompts.note_messages(question, sub_q, retriever.format_docs(docs))
     )
     cited = [n for n in _cited_numbers(summary) if 1 <= n <= len(docs)]
-    used = [docs[n - 1] for n in cited] if cited else docs
-    # Note citations are renumbered locally to match their order in the list.
-    summary = _renumber(summary, {n: i + 1 for i, n in enumerate(cited)}) if cited else summary
+    used = [docs[n - 1] for n in cited]
+    # Note citations are renumbered locally to match their order in the list; numbers that point at no
+    # document are dropped. A note that cites nothing (e.g. "Not found ...") brings no citations along.
+    summary = _renumber(summary, {n: i + 1 for i, n in enumerate(cited)})
     note = Note(sub_question=sub_q, summary=summary, citations=[retriever.to_citation(d) for d in used])
-    return note, used, record
+    return note, used or docs, record
 
 
 def research(state: AgentState) -> dict:
@@ -178,9 +159,44 @@ def should_continue(state: AgentState) -> str:
     return "write"
 
 
+def _own_record_for_totals(state: AgentState) -> dict | None:
+    """The signed-in student's own record when the question is about them ("my yearly cost"), else None."""
+    from smart_campus_assistant.router import FIRST_PERSON  # lazy: the router imports the graph's other nodes
+
+    if not state.get("student_id") or not FIRST_PERSON.search(state["question"].lower()):
+        return None
+    return student_data.get_student(state["student_id"])
+
+
+def fee_totals_note(state: AgentState) -> Note | None:
+    """The fee totals computed in code, as a research note citing them (None if the question asks for none).
+
+    The writer gets them first, so it copies the per-semester, per-year and one-time totals
+    instead of adding up table amounts across notes.
+    """
+    from smart_campus_assistant import retriever  # lazy: lets fake mode stub the module
+
+    doc = fee_calculator.fee_totals_document(state["question"], _own_record_for_totals(state))
+    if doc is None:
+        return None
+    heading, *lines = doc.page_content.splitlines()
+    summary = "\n".join(f"{line.rstrip('.')} [1]." for line in lines if line.startswith("- "))
+    return Note(sub_question=heading, summary=summary, citations=[retriever.to_citation(doc)])
+
+
+def _source_line(number: int, citation: Citation) -> str:
+    page = citation.get("page")
+    return f"[{number}] {citation.get('college')} | {citation.get('source')}" + (f" p.{page}" if page is not None else "")
+
+
 def write_report(state: AgentState) -> dict:
-    """Write the final report; citations are de-duplicated and renumbered 1..n in order of use."""
-    notes = state.get("notes", [])
+    """Write the final report; citations are de-duplicated and renumbered 1..n in order of use.
+
+    A report that cites nothing and uses nothing from the student's own record becomes the
+    standard not-found message (grounding.check_answer).
+    """
+    totals = fee_totals_note(state)
+    notes = ([totals] if totals else []) + list(state.get("notes", []))
     global_cites: list[Citation] = []
     index: dict[tuple, int] = {}
     numbered_notes: list[Note] = []
@@ -192,23 +208,16 @@ def write_report(state: AgentState) -> dict:
                 global_cites.append(cite)
                 index[key] = len(global_cites)
             mapping[i] = index[key]
-        summary = _renumber(note["summary"], mapping) if _cited_numbers(note["summary"]) else note["summary"]
+        summary = _renumber(note["summary"], mapping)  # also drops numbers the note has no source for
         numbered_notes.append(Note(sub_question=note["sub_question"], summary=summary, citations=note["citations"]))
 
-    sources_text = "\n".join(
-        f"[{i}] {c.get('college')} | {c.get('source')} p.{c.get('page')}" for i, c in enumerate(global_cites, 1)
-    ) or "(none)"
+    sources_text = "\n".join(_source_line(i, c) for i, c in enumerate(global_cites, 1)) or "(none)"
+    student_text = _student_text(state)
     report, record = call_llm(
         "answer", "writer", prompts.writer_messages(
-            state["question"], _notes_text(numbered_notes), sources_text, _student_text(state)
+            state["question"], _notes_text(numbered_notes), sources_text, student_text
         )
     )
-
-    # Keep only citations the report uses, renumbered in order of first use.
-    used = [n for n in _cited_numbers(report) if 1 <= n <= len(global_cites)]
-    if used:
-        report = _renumber(report, {n: i + 1 for i, n in enumerate(used)})
-        citations = [global_cites[n - 1] for n in used]
-    else:
-        citations = global_cites
+    # Keep only citations the report uses, renumbered in order of first use; made-up numbers are dropped.
+    report, citations = grounding.check_answer(report, global_cites, record_text=student_text)
     return {"answer": report, "citations": citations, "usage": [record]}

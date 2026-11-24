@@ -17,21 +17,26 @@ if str(ROOT) not in sys.path:
 from ui.components import (  # noqa: E402
     all_records_safe,
     as_of_date,
+    attendance_text,
     days_text,
     empty_state,
+    flash,
     format_rupees,
     get_college_name,
-    hero_html,
+    hero,
     kpi_card_html,
+    kpi_row_html,
     local_stamp,
     nice_date,
     require_role,
     section_header,
+    show_flashes,
     student_flags,
 )
-from ui.theme import BASELINE_COLOR, DEEP_COLOR, PERSONAL_COLOR, ROUTER_COLOR, SIMPLE_COLOR, inject_css  # noqa: E402
+from ui.theme import BAD_COLOR, DEEP_COLOR, INFO_COLOR, OK_COLOR, WARN_COLOR, WIDE_WIDTH, inject_css  # noqa: E402
 
 BRANCH_ORDER = ["CSE", "ECE", "ME", "CE"]
+FLASH_KEY = "overview_flash"
 
 
 def plural(n: int, word: str) -> str:
@@ -53,20 +58,19 @@ def action_rows(records: list[dict]) -> list[dict]:
             rows.append({**base, "Issue": "Overdue books",
                          "Detail": f"{plural(flags['overdue_books'], 'book')} overdue · fine {format_rupees(flags['fine'])}"})
         if flags["low_attendance"]:
-            rows.append({**base, "Issue": "Low attendance", "Detail": f"{flags['attendance']:.1f}% overall (minimum 75%)"})
+            rows.append({**base, "Issue": "Low attendance",
+                         "Detail": f"{attendance_text(flags['attendance'])} overall (minimum 75%)"})
     order = {"Fees overdue": 0, "Overdue books": 1, "Low attendance": 2}
     return sorted(rows, key=lambda x: (order[x["Issue"]], x["Student ID"]))
 
 
-inject_css()
+inject_css(max_width=WIDE_WIDTH)
 require_role("admin")
 
 records = all_records_safe()
-st.markdown(
-    hero_html("Admin · overview", get_college_name(),
-              "College-wide fees, library, attendance and results from all student records."),
-    unsafe_allow_html=True,
-)
+# Every admin page is titled by what it shows (the college name is already in the sidebar).
+hero("Admin · overview", "Overview",
+     f"College-wide fees, library, attendance and results from all student records of {get_college_name()}.")
 
 if not records:
     empty_state("🗂️", "No student records", "data/students.json is missing or empty.")
@@ -85,19 +89,20 @@ no_att = sum(1 for f in flags if f["attendance"] is None)
 backlog_students = sum(1 for f in flags if f["backlogs"])
 total_backlogs = sum(f["backlogs"] for f in flags)
 
+# Status colours as everywhere else: green fine, amber due, orange overdue / below the minimum.
 cards = [
-    kpi_card_html("Students", str(len(records)), " · ".join(f"{b} {by_branch[b]}" for b in branches), ROUTER_COLOR),
-    kpi_card_html("Fees collected", format_rupees(collected), "This semester, all branches", SIMPLE_COLOR),
+    kpi_card_html("Students", str(len(records)), " · ".join(f"{b} {by_branch[b]}" for b in branches), INFO_COLOR),
+    kpi_card_html("Fees collected", format_rupees(collected), "This semester, all branches", OK_COLOR),
     kpi_card_html("Fees outstanding", format_rupees(outstanding), f"{plural(overdue_accounts, 'account')} overdue",
-                  BASELINE_COLOR if overdue_accounts else PERSONAL_COLOR),
+                  BAD_COLOR if overdue_accounts else (WARN_COLOR if outstanding else OK_COLOR)),
     kpi_card_html("Overdue books", plural(overdue_book_students, "student"), f"Library fines {format_rupees(fines)} in total",
-                  BASELINE_COLOR if overdue_book_students else SIMPLE_COLOR),
+                  BAD_COLOR if overdue_book_students else OK_COLOR),
     kpi_card_html("Low attendance", plural(low_att, "student"),
                   "Below the 75% minimum" + (f" · {no_att} not recorded yet" if no_att else ""),
-                  BASELINE_COLOR if low_att else SIMPLE_COLOR),
+                  BAD_COLOR if low_att else OK_COLOR),
     kpi_card_html("Backlogs", plural(backlog_students, "student"), f"{plural(total_backlogs, 'backlog')} in total", DEEP_COLOR),
 ]
-st.markdown(f'<div class="sca-kpis">{"".join(cards)}</div>', unsafe_allow_html=True)
+st.markdown(kpi_row_html(cards), unsafe_allow_html=True)
 
 left, right = st.columns([1, 1], gap="large")
 with left:
@@ -112,14 +117,14 @@ with left:
         chart = alt.Chart(df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
             x=alt.X("Branch:N", sort=branches, title=None, axis=alt.Axis(labelAngle=0)),
             y=alt.Y("Outstanding (₹):Q", title="₹ outstanding", axis=alt.Axis(format="~s")),
-            color=alt.Color("Status:N", scale=alt.Scale(domain=["Overdue", "Not yet due"], range=[BASELINE_COLOR, PERSONAL_COLOR]),
+            color=alt.Color("Status:N", scale=alt.Scale(domain=["Overdue", "Not yet due"], range=[BAD_COLOR, WARN_COLOR]),
                             legend=alt.Legend(orient="bottom", title=None)),
             order=alt.Order("Status:N", sort="descending"),
             tooltip=["Branch", "Status", alt.Tooltip("Outstanding (₹):Q", format=",.0f")],
         )
         st.altair_chart(chart.properties(height=280), width="stretch")
     else:
-        st.caption("No fees outstanding. 🎉")
+        empty_state("🎉", "No fees outstanding", "Every student has paid this semester's fees.", compact=True)
 
 with right:
     section_header("Students by branch")
@@ -137,9 +142,13 @@ if actions:
     kinds = ["All", "Fees overdue", "Overdue books", "Low attendance"]
     pick = st.segmented_control("Show", kinds, default="All", key="overview_action_filter", label_visibility="collapsed")
     shown = actions if pick in (None, "All") else [a for a in actions if a["Issue"] == pick]
-    st.dataframe(pd.DataFrame(shown), hide_index=True, width="stretch")
+    if shown:
+        st.dataframe(pd.DataFrame(shown), hide_index=True, width="stretch")
+    else:
+        empty_state("✅", f"No \"{pick}\" items", "Pick another kind of issue above.", compact=True)
 else:
-    st.success("Nothing needs follow-up right now.", icon=":material/check_circle:")
+    empty_state("✅", "Nothing needs follow-up right now", "No overdue fees, overdue books or low attendance.",
+                compact=True)
 
 
 # ---------- email notifications ----------
@@ -150,12 +159,11 @@ def queue_fee_reminders_now() -> None:
 
     queued = notify_students("queue_fee_reminders")
     if queued is None:  # also when the notifications module cannot be loaded
-        st.session_state["overview_flash"] = ("error", "Could not queue fee reminders.")
+        flash(FLASH_KEY, "error", "Could not queue fee reminders.")
     elif queued:
-        st.session_state["overview_flash"] = ("success", f"{plural(queued, 'fee reminder')} queued.")
+        flash(FLASH_KEY, "success", f"{plural(queued, 'fee reminder')} queued.")
     else:
-        st.session_state["overview_flash"] = (
-            "info", "No new fee reminders today (each student gets at most one per stage or week).")
+        flash(FLASH_KEY, "info", "No new fee reminders today (each student gets at most one per stage or week).")
 
 
 def render_notifications() -> None:
@@ -168,9 +176,8 @@ def render_notifications() -> None:
         "Students are emailed when you reply to a request or publish a notice for their branch, "
         "and get fee reminders 7 days before the due date and weekly while overdue.",
     )
-    flash = st.session_state.pop("overview_flash", None)
-    if flash:
-        getattr(st, flash[0])(flash[1])
+    # The outcome of "Send fee reminders now", next to the button: one inline message with the standard icon.
+    show_flashes(FLASH_KEY)
     on = notifications.enabled()
     if not on:
         st.info("Email notifications are turned off (SCA_EMAIL_NOTIFICATIONS=0).", icon=":material/notifications_off:")
@@ -199,7 +206,8 @@ def render_notifications() -> None:
             hide_index=True, width="stretch",
         )
     else:
-        st.caption("No emails yet.")
+        empty_state("📭", "No emails yet", "Emails to students are listed here with their delivery status.",
+                    compact=True)
 
 
 render_notifications()

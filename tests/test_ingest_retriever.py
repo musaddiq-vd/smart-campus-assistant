@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 from pathlib import Path
 
 import pytest
 from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
 
-from smart_campus_assistant import ingest, models, retriever
+from smart_campus_assistant import ingest, local_search, models, retriever
 from smart_campus_assistant.config import COLLEGE_KEY, COLLEGE_NAME, get_settings
 
-REQUIRED_KEYS = {"college", "doc_type", "source", "page", "chunk_id"}
+REQUIRED_KEYS = {"college", "doc_type", "source", "page", "chunk_id", "section"}
 REAL_DATA_DIR = get_settings().data_dir
 
 LONG = "Tuition fee for B.Tech is Rs 80,000 per semester payable online. " * 30
@@ -72,15 +73,23 @@ def data_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def memory_backend(monkeypatch, data_dir):
-    """Memory vector store with fake embeddings and settings pointing at the temp data."""
-    settings = dataclasses.replace(get_settings(), vector_backend="memory", data_dir=data_dir, retriever_k=3)
+def memory_backend(monkeypatch, data_dir, tmp_path):
+    """Memory vector store with fake embeddings and settings (hybrid search) pointing at the temp data."""
+    settings = dataclasses.replace(get_settings(), vector_backend="memory", data_dir=data_dir, retriever_k=3,
+                                   search_mode="hybrid")
     monkeypatch.setattr(retriever, "get_settings", lambda: settings)
     monkeypatch.setattr(ingest, "get_settings", lambda: settings)
     monkeypatch.setattr(models, "get_embeddings", lambda: DeterministicFakeEmbedding(size=64))
-    retriever.reset_vector_store_cache()
+    monkeypatch.setenv("SCA_UPLOADS_DIR", str(tmp_path / "uploads"))
+    notices_path = tmp_path / "notices.json"
+    notices_path.write_text(json.dumps({"notices": []}), encoding="utf-8")
+    monkeypatch.setenv("SCA_NOTICES_FILE", str(notices_path))
+    clear_store = retriever.get_vector_store.cache_clear  # tests may replace get_vector_store itself
+    clear_store()
+    local_search.reset_cache()
     yield settings
-    retriever.reset_vector_store_cache()
+    clear_store()
+    local_search.reset_cache()
 
 
 # ---------- doc_type map ----------
@@ -135,6 +144,8 @@ def test_chunk_metadata_contract(data_dir):
         assert c.id == m["chunk_id"]
         assert len(c.page_content) <= ingest.CHUNK_SIZE
         assert "  " not in c.page_content
+        # The heading path is both the first line of the text and the "section" metadata.
+        assert c.page_content.split("\n", 1)[0] == m["section"]
     assert {c.metadata["doc_type"] for c in chunks} == {"fees", "rules", "other"}
 
 
@@ -204,20 +215,148 @@ def test_memory_ingest_search_and_filter(memory_backend):
     assert retriever.search("anything", college="other_college") == []
 
 
-def test_s3_filter_syntax(monkeypatch):
-    """With the S3 backend, search passes a Mongo-style filter to the store."""
-    calls = {}
+class RecordingStore:
+    """Stands in for AmazonS3Vectors: records the call and returns fixed documents."""
 
-    class FakeStore:
-        def similarity_search(self, query, k, filter=None):
-            calls.update(query=query, k=k, filter=filter)
-            return []
+    def __init__(self, docs=(), error: Exception | None = None):
+        self.docs, self.error, self.calls = list(docs), error, []
 
-    settings = dataclasses.replace(get_settings(), vector_backend="s3", retriever_k=4)
+    def similarity_search(self, query, k, filter=None):
+        self.calls.append({"query": query, "k": k, "filter": filter})
+        if self.error:
+            raise self.error
+        return self.docs[:k]
+
+
+def _use_store(monkeypatch, store, search_mode="hybrid", retriever_k=4):
+    settings = dataclasses.replace(get_settings(), vector_backend="s3", retriever_k=retriever_k,
+                                   search_mode=search_mode)
     monkeypatch.setattr(retriever, "get_settings", lambda: settings)
-    monkeypatch.setattr(retriever, "get_vector_store", lambda: FakeStore())
+    monkeypatch.setattr(retriever, "get_vector_store", lambda: store)
+
+
+def test_s3_filter_syntax(monkeypatch):
+    """With the S3 backend, vector mode passes k and a Mongo-style filter to the store unchanged."""
+    store = RecordingStore()
+    _use_store(monkeypatch, store, search_mode="vector")
     retriever.search("hostel fee", college=COLLEGE_KEY)
-    assert calls == {"query": "hostel fee", "k": 4, "filter": {"college": {"$eq": COLLEGE_KEY}}}
+    assert store.calls == [{"query": "hostel fee", "k": 4, "filter": {"college": {"$eq": COLLEGE_KEY}}}]
+
+
+def test_hybrid_asks_the_store_for_more_candidates_with_the_same_filter(monkeypatch):
+    store = RecordingStore()
+    _use_store(monkeypatch, store)
+    results = retriever.search("hostel fee", college=COLLEGE_KEY)
+    call = store.calls[0]
+    assert call["query"] == "hostel fee" and call["filter"] == {"college": {"$eq": COLLEGE_KEY}}
+    assert call["k"] == retriever.ranking.candidate_count(4) > 4
+    # BM25 over the real documents still answers when the vector store has nothing.
+    assert 0 < len(results) <= 4 and any("hostel" in d.page_content.lower() for d in results)
+
+
+def test_search_mode_setting(monkeypatch):
+    from smart_campus_assistant import config
+
+    monkeypatch.setenv("SEARCH_MODE", " Vector ")
+    assert config.search_mode_from_env() == "vector"
+    monkeypatch.setenv("SEARCH_MODE", "bogus")
+    assert config.search_mode_from_env() == "hybrid"  # a typo never breaks search
+    monkeypatch.delenv("SEARCH_MODE")
+    assert config.search_mode_from_env() == "hybrid"
+
+
+# ---------- hybrid search (temp data, fake vector store) ----------
+
+def _chunk(chunks, needle):
+    return next(c for c in chunks if needle in c.page_content)
+
+
+def test_hybrid_fuses_both_rankings_and_drops_stale_copies(memory_backend, monkeypatch):
+    chunks = ingest.all_chunks()
+    late = _chunk(chunks, "Rs 100 per day")
+    canteen = _chunk(chunks, "canteen")  # shares no word with the query: only "semantic" search finds it
+    stale = Document(page_content=late.page_content, id="fee_structure.md:s3:c9",
+                     metadata={**late.metadata, "chunk_id": "fee_structure.md:s3:c9"})
+    store = RecordingStore([canteen, stale, late])
+    monkeypatch.setattr(retriever, "get_vector_store", lambda: store)
+
+    results = retriever.search("late fine for each day", k=4)
+    ids = [d.metadata["chunk_id"] for d in results]
+    # 1st in BM25 and 3rd in vector search: both retrievers like it, so it beats the vector's own 1st pick.
+    assert ids[0] == late.metadata["chunk_id"]
+    assert ids[1] == canteen.metadata["chunk_id"]  # a vector-only hit still gets a slot
+    assert "fee_structure.md:s3:c9" not in ids  # a stale copy of the same text is dropped
+    assert len(ids) == 2
+
+
+def test_hybrid_falls_back_when_one_side_fails(memory_backend, monkeypatch):
+    chunks = ingest.all_chunks()
+    canteen = _chunk(chunks, "canteen")
+    monkeypatch.setattr(retriever, "get_vector_store", lambda: RecordingStore(error=RuntimeError("no AWS")))
+    keyword_only = retriever.search("late fee per day")
+    assert keyword_only and "Rs 100 per day" in keyword_only[0].page_content
+
+    def broken(*args, **kwargs):
+        raise OSError("documents folder missing")
+
+    monkeypatch.setattr(local_search, "keyword_search", broken)
+    monkeypatch.setattr(retriever, "get_vector_store", lambda: RecordingStore([canteen]))
+    assert retriever.search("late fee per day") == [canteen]
+
+    # Nothing from BM25 and a failing vector store: the vector error surfaces.
+    monkeypatch.setattr(retriever, "get_vector_store", lambda: RecordingStore(error=RuntimeError("no AWS")))
+    with pytest.raises(RuntimeError, match="no AWS"):
+        retriever.search("late fee per day")
+
+
+def test_hybrid_college_filter_applies_to_both_sides(memory_backend):
+    ingest.ingest()
+    assert retriever.search("late fee", college="other_college") == []
+    hits = retriever.search("late fee", college=COLLEGE_KEY)
+    assert hits and {d.metadata["college"] for d in hits} == {COLLEGE_KEY}
+
+
+# ---------- prune ----------
+
+def test_ingest_prune_removes_vectors_of_an_older_chunking(memory_backend, capsys):
+    count = ingest.ingest()
+    store = retriever.get_vector_store()
+    store.add_documents([Document(page_content="old piece", metadata={"chunk_id": "fee_structure.md:s3:c1"})],
+                        ids=["fee_structure.md:s3:c1"])
+    assert ingest.ingest(prune_stale=True) == count
+    assert "fee_structure.md:s3:c1" not in store.store and len(store.store) == count
+    assert "Pruned 1 stale vectors." in capsys.readouterr().out
+
+
+def test_prune_lists_s3_vectors_page_by_page():
+    class Client:
+        def __init__(self):
+            self.calls = []
+
+        def list_vectors(self, **params):
+            self.calls.append(params)
+            if "nextToken" not in params:
+                return {"vectors": [{"key": "keep:c0"}, {"key": "old:c1"}], "nextToken": "t2"}
+            return {"vectors": [{"key": "old:c2"}]}
+
+    class S3Store:
+        vector_bucket_name, index_name = "bucket", "index"
+
+        def __init__(self):
+            self.client, self.deleted = Client(), []
+
+        def delete(self, ids=None):
+            assert ids  # never None/empty: that would drop the whole index
+            self.deleted += ids
+
+    store = S3Store()
+    assert ingest.prune(store, {"keep:c0"}) == 2
+    assert store.deleted == ["old:c1", "old:c2"]
+    assert store.client.calls[1]["nextToken"] == "t2" and store.client.calls[0]["indexName"] == "index"
+    nothing = S3Store()
+    nothing.client.list_vectors = lambda **params: {"vectors": [{"key": "keep:c0"}]}
+    assert ingest.prune(nothing, {"keep:c0"}) == 0 and nothing.deleted == []
+    assert ingest.prune(object(), {"x"}) == 0  # a store that cannot list its ids is left alone
 
 
 def test_clean_query_drops_college_name():
@@ -256,3 +395,113 @@ def test_to_citation():
     assert cit["snippet"].endswith("...")
     short = retriever.to_citation(_doc("Short text.", page=None))
     assert short["snippet"] == "Short text." and short["page"] is None
+    assert cit["section"] is None and short["section"] is None  # single-line chunks have no heading
+
+
+def test_citation_names_the_section_and_quotes_the_body(data_dir):
+    chunks = ingest.split_documents(ingest.load_documents(data_dir))
+    cit = retriever.to_citation(_chunk(chunks, "Rs 100 per day"))
+    assert cit["source"] == "fee_structure.md" and cit["page"] == 3
+    assert cit["section"] == "Fee Structure 2026-27 > Late fee"
+    assert cit["snippet"] == "A late fee of Rs 100 per day is charged after the due date."  # heading not repeated
+
+
+def test_citation_section_falls_back_to_the_first_line():
+    """Older vectors and notice chunks have no "section" key: their first line is the heading."""
+    notice = Document(page_content="Notice N-2026-0001 (2026-11-02) > Library closed\nThe library is closed.",
+                      metadata={"source": "notices.json", "college": COLLEGE_KEY, "page": 1})
+    cit = retriever.to_citation(notice)
+    assert cit["section"] == "Notice N-2026-0001 (2026-11-02) > Library closed"
+    assert cit["snippet"] == "The library is closed."
+    assert ingest.with_sections([notice])[0].metadata["section"] == cit["section"]
+
+
+# ---------- heading-level chunking ----------
+
+ATTENDANCE_RULE = " ".join(f"Attendance clause {i}: students must attend at least 75% of classes." for i in range(18))
+
+RULES_LONG_MD = f"""# Academic Rules
+
+## Attendance
+
+{ATTENDANCE_RULE}
+
+## Fees table
+
+| Item | Amount |
+|---|---|
+""" + "\n".join(f"| Fee item {i} with a long description | Rs {i},000 |" for i in range(60)) + """
+
+## Exam rules
+
+### Hall tickets
+
+```
+# not a heading: shell comment inside a code block
+```
+
+Hall tickets are released a week before exams.
+
+#### Lost hall ticket
+
+A duplicate hall ticket costs Rs 200 at the Examination Cell.
+"""
+
+
+def test_a_rule_section_stays_in_one_chunk():
+    assert 800 < len(ATTENDANCE_RULE) < ingest.CHUNK_SIZE - 50  # used to be cut in two at 800 characters
+    docs = ingest.text_documents(RULES_LONG_MD, source="rules.md", doc_type="rules", fallback="rules")
+    chunks = ingest.split_documents(docs)
+    attendance = [c for c in chunks if c.metadata["section"] == "Academic Rules > Attendance"]
+    assert len(attendance) == 1
+    assert attendance[0].page_content == f"Academic Rules > Attendance\n{ATTENDANCE_RULE}"
+
+
+def test_headings_build_the_path_and_code_fences_are_not_headings():
+    sections = {doc.metadata["section"]: doc for doc in
+                ingest.text_documents(RULES_LONG_MD, source="rules.md", doc_type="rules", fallback="rules")}
+    hall = sections["Academic Rules > Exam rules > Hall tickets"]
+    assert "# not a heading" in hall.page_content
+    # A level-4 heading stays inside its rule instead of starting a new section.
+    assert "#### Lost hall ticket" in hall.page_content and "Rs 200" in hall.page_content
+    assert list(sections) == ["Academic Rules > Attendance", "Academic Rules > Fees table",
+                              "Academic Rules > Exam rules > Hall tickets"]
+    assert [d.metadata["page"] for d in sections.values()] == [1, 2, 3]
+
+
+def test_long_section_is_split_with_overlap_and_repeats_the_table_header():
+    docs = ingest.text_documents(RULES_LONG_MD, source="rules.md", doc_type="rules", fallback="rules")
+    pieces = [c for c in ingest.split_documents(docs) if c.metadata["section"] == "Academic Rules > Fees table"]
+    assert len(pieces) > 1
+    assert [c.metadata["chunk_id"] for c in pieces] == [f"rules.md:s2:c{i}" for i in range(len(pieces))]
+    for first, second in zip(pieces, pieces[1:], strict=False):
+        body = second.page_content.split("\n")
+        assert body[0] == "Academic Rules > Fees table"
+        assert body[1:3] == ["| Item | Amount |", "|---|---|"]  # header repeated in every piece
+        assert body[3] in first.page_content  # overlap: the piece starts with rows the previous one ended with
+    assert all(len(c.page_content) <= ingest.CHUNK_SIZE for c in pieces)
+    rows = {line for c in pieces for line in c.page_content.split("\n") if line.startswith("| Fee item")}
+    assert len(rows) == 60  # nothing lost
+
+
+def test_long_section_prefers_sub_heading_boundaries():
+    sub = "\n\n".join(f"#### Rule {i}\n\n" + f"Rule {i} text sentence. " * 25 for i in range(4))
+    docs = ingest.text_documents(f"## Big rules\n\n{sub}", source="big.md", doc_type="rules", fallback="big")
+    pieces = ingest.split_documents(docs)
+    assert len(pieces) > 1
+    assert all(p.page_content.split("\n")[1].startswith("#### Rule") for p in pieces)
+
+
+def test_plain_text_has_no_headings_and_uses_the_fallback_title():
+    text = "# not a heading in a .txt file\n\nThe transport office opens at 08:00 on weekdays."
+    docs = ingest.text_documents(text, source="transport.txt", doc_type="uploads", fallback="Transport", plain=True)
+    assert len(docs) == 1 and docs[0].metadata["section"] == "Transport"
+    assert docs[0].page_content.startswith("# not a heading")
+    assert ingest.split_sections("", "Empty") == [("Empty", "")]
+
+
+def test_real_sections_are_never_cut():
+    chunks = ingest.split_documents(ingest.load_documents(REAL_DATA_DIR))
+    sections = ingest.load_documents(REAL_DATA_DIR)
+    assert len(chunks) == len(sections)  # every real rule fits in one chunk
+    assert all(c.metadata["chunk_id"].endswith(":c0") for c in chunks)

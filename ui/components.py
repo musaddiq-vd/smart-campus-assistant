@@ -2,6 +2,15 @@
 
 ``*_html`` functions return HTML strings (pure, easy to test); the matching
 functions without the suffix render them with ``st.markdown``.
+
+Shared UI patterns, so every page looks and behaves the same:
+- page header: ``hero`` / ``hero_html``; section titles: ``section_header``;
+- KPI tiles: ``kpi_card_html`` inside ``kpi_row_html``;
+- "nothing here yet": ``empty_state`` (``compact=True`` inside a section);
+- the outcome of an action: ``flash`` in the callback, ``show_flashes`` on the page (one inline alert);
+- destructive actions: ``confirm_prompt`` ("Yes, ..." + "Cancel");
+- status words and colours: ``fee_level`` / ``attendance_level`` with ``LEVEL_COLORS``;
+- dates ``nice_date`` ("03 Nov 2026"), timestamps ``local_stamp`` ("03 Nov 2026, 15:45 IST"), money ``format_rupees``.
 """
 
 from __future__ import annotations
@@ -16,7 +25,18 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from ui.theme import BASELINE_COLOR, DEEP_COLOR, PERSONAL_COLOR, ROUTE_ICONS, ROUTER_COLOR, SIMPLE_COLOR
+from ui.theme import (
+    BAD_COLOR,
+    BASELINE_COLOR,
+    DEEP_COLOR,
+    INFO_COLOR,
+    OK_COLOR,
+    PERSONAL_COLOR,
+    ROUTE_ICONS,
+    ROUTER_COLOR,
+    SIMPLE_COLOR,
+    WARN_COLOR,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -152,6 +172,7 @@ def _md(html: str) -> None:
 
 
 def hero_html(eyebrow: str, title: str, subtitle: str, chips: list[str] | None = None) -> str:
+    """Page header: eyebrow ("Admin · notices"), title, one-line subtitle and optional chips (already HTML)."""
     chips_html = f'<div class="chips">{"".join(chips)}</div>' if chips else ""
     return (
         f'<div class="sca-hero"><div class="eyebrow">{escape(eyebrow)}</div>'
@@ -159,8 +180,18 @@ def hero_html(eyebrow: str, title: str, subtitle: str, chips: list[str] | None =
     )
 
 
+def hero(eyebrow: str, title: str, subtitle: str, chips: list[str] | None = None) -> None:
+    _md(hero_html(eyebrow, title, subtitle, chips))
+
+
+# Chip kinds: ok / warn / bad / info are status dots; live / demo are the older names of ok / bad.
+CHIP_KINDS = ("", "ok", "warn", "bad", "info", "live", "demo")
+
+
 def chip_html(text: str, kind: str = "") -> str:
-    dot = '<span class="dot"></span>' if kind else ""
+    """Small pill. A kind adds a coloured dot; the text always says the status too (never colour alone)."""
+    kind = kind if kind in CHIP_KINDS else "info"
+    dot = '<span class="dot" aria-hidden="true"></span>' if kind else ""
     return f'<span class="sca-chip {kind}">{dot}{escape(text)}</span>'
 
 
@@ -179,17 +210,23 @@ def route_badge(route: str | None, reason: str | None = None, forced: bool = Fal
     _md(route_badge_html(route, reason, forced))
 
 
-def citation_card_html(citation: Mapping, number: int | None = None) -> str:
+def citation_card_html(citation: Mapping, number: int | str | None = None) -> str:
+    """One source card: [n], the document, its section heading and a short quote (all escaped).
+
+    ``number`` may be text such as "1, 3" when one card stands for two numbers in the answer.
+    """
     source = str(citation.get("source") or "unknown source")
     college = citation.get("college") or (source.split("/")[0] if "/" in source else None)
     page = citation.get("page")
+    section = str(citation.get("section") or "").strip()
     snippet = str(citation.get("snippet") or "").strip()
-    num = f'<span class="num">[{number}]</span>' if number is not None else ""
-    page_html = f'<span class="page">Page {escape(str(page))}</span>' if page not in (None, "") else ""
+    num = f'<span class="num">[{escape(str(number))}]</span>' if number not in (None, "") else ""
+    page_html = f'<span class="page">Section {escape(str(page))}</span>' if page not in (None, "") else ""
+    section_html = f'<div class="section">{escape(section)}</div>' if section else ""
     snippet_html = f'<div class="snippet">{escape(snippet)}</div>' if snippet else ""
     return (
         f'<div class="sca-cite"><div class="head"><span>{num} <span class="college">{escape(college_name(college))}</span></span>'
-        f'{page_html}</div><div class="file">{escape(source.split("/")[-1])}</div>{snippet_html}</div>'
+        f'{page_html}</div><div class="file">{escape(source.split("/")[-1])}</div>{section_html}{snippet_html}</div>'
     )
 
 
@@ -203,9 +240,10 @@ def citation_card(citation: Mapping, number: int | None = None) -> None:
 
 
 def kpi_card_html(label: str, value: str, sub: str = "", accent: str = ROUTER_COLOR, unit: str = "") -> str:
+    """One KPI tile; ``accent`` colours the top stripe (the sub text carries the meaning, not the colour)."""
     unit_html = f'<span class="unit">{escape(unit)}</span>' if unit else ""
     return (
-        f'<div class="sca-kpi" style="--accent:{accent}"><div class="label">{escape(label)}</div>'
+        f'<div class="sca-kpi" style="--accent:{escape(str(accent))}"><div class="label">{escape(label)}</div>'
         f'<div class="value">{escape(value)}{unit_html}</div><div class="sub">{escape(sub)}</div></div>'
     )
 
@@ -214,20 +252,121 @@ def kpi_card(label: str, value: str, sub: str = "", accent: str = ROUTER_COLOR, 
     _md(kpi_card_html(label, value, sub, accent, unit))
 
 
-def empty_state_html(icon: str, title: str, text: str) -> str:
+def kpi_row_html(cards: Iterable[str]) -> str:
+    """KPI tiles in one responsive grid (2 per row on phones, 1 on very narrow ones)."""
+    return f'<div class="sca-kpis">{"".join(cards)}</div>'
+
+
+def empty_state_html(icon: str, title: str, text: str, compact: bool = False) -> str:
+    """"Nothing here yet" in one look: a big card for a page, ``compact`` for one section of a page."""
+    if compact:
+        text_html = f'<div class="text">{escape(text)}</div>' if text else ""
+        return (
+            f'<div class="sca-empty compact" role="status"><div class="icon" aria-hidden="true">{escape(icon)}</div>'
+            f'<div class="body"><div class="title">{escape(title)}</div>{text_html}</div></div>'
+        )
     return (
-        f'<div class="sca-empty"><div class="icon">{escape(icon)}</div>'
+        f'<div class="sca-empty" role="status"><div class="icon" aria-hidden="true">{escape(icon)}</div>'
         f"<h3>{escape(title)}</h3><p>{escape(text)}</p></div>"
     )
 
 
-def empty_state(icon: str, title: str, text: str) -> None:
-    _md(empty_state_html(icon, title, text))
+def empty_state(icon: str, title: str, text: str, compact: bool = False) -> None:
+    _md(empty_state_html(icon, title, text, compact))
 
 
 def section_header(title: str, caption: str = "") -> None:
     cap = f"<p>{escape(caption)}</p>" if caption else ""
     _md(f'<div class="sca-section"><h3>{escape(title)}</h3>{cap}</div>')
+
+
+CALLOUT_KINDS = ("info", "ok", "warn", "bad")
+
+
+def callout_html(text: str, icon: str = "ℹ️", kind: str = "info", title: str = "") -> str:
+    """A tinted note inside a page (demo payment, tips); plain text only, everything escaped."""
+    kind = kind if kind in CALLOUT_KINDS else "info"
+    title_html = f'<span class="title">{escape(title)}</span> ' if title else ""
+    return (
+        f'<div class="sca-callout {kind}"><span class="icon" aria-hidden="true">{escape(icon)}</span>'
+        f'<div class="body">{title_html}{escape(text)}</div></div>'
+    )
+
+
+def facts_html(facts: Iterable[tuple[str, object]], extra_class: str = "") -> str:
+    """Label / value rows (empty values are skipped), e.g. the student of a request."""
+    rows = "".join(
+        f'<div class="fact"><span class="k">{escape(str(label))}</span><span class="v">{escape(str(value))}</span></div>'
+        for label, value in facts if value not in (None, "")
+    )
+    cls = f"sca-facts {escape(extra_class)}".strip()
+    return f'<div class="{cls}">{rows}</div>'
+
+
+# ---------- feedback: one pattern for every page ----------
+#
+# The outcome of an action is shown ONCE, as an inline alert where the action happened
+# (under the page header, or under a single form). Never a toast plus an alert for the same
+# event: toasts vanish after a few seconds and screen readers can miss them.
+
+FLASH_KINDS = ("success", "info", "warning", "error")
+FLASH_ICONS = {
+    "success": ":material/check_circle:",
+    "info": ":material/info:",
+    "warning": ":material/warning:",
+    "error": ":material/error:",
+}
+LOCKOUT_ICON = ":material/lock_clock:"
+
+
+def alert(kind: str, text: str, icon: str | None = None) -> None:
+    """One inline alert with the standard icon for its kind (unknown kinds become "info")."""
+    kind = kind if kind in FLASH_KINDS else "info"
+    getattr(st, kind)(text, icon=icon or FLASH_ICONS[kind])
+
+
+def flash(key: str, kind: str, text: str) -> None:
+    """Queue a message (usually from a callback); ``show_flashes(key)`` shows it on the next run."""
+    st.session_state.setdefault(key, []).append((kind if kind in FLASH_KINDS else "info", str(text)))
+
+
+def show_flashes(key: str) -> int:
+    """Show, then forget, the messages queued under ``key``; returns how many were shown.
+
+    The same message queued twice for one action is shown once.
+    """
+    queued = st.session_state.pop(key, None) or []
+    if isinstance(queued, tuple):  # one (kind, text) pair instead of a list
+        queued = [queued]
+    shown: list[tuple[str, str]] = []
+    for item in queued:
+        try:
+            kind, text = item
+        except (TypeError, ValueError):
+            continue
+        if (kind, text) in shown:
+            continue
+        shown.append((kind, text))
+        alert(kind, text)
+    return len(shown)
+
+
+def confirm_prompt(text: str, *, yes_label: str, yes_key: str, on_yes, yes_args: tuple = (),
+                   no_key: str, on_no, no_args: tuple = ()) -> None:
+    """The confirm step of every destructive action: a warning, then "Yes, ..." (primary) and "Cancel"."""
+    st.warning(text, icon=":material/warning:")
+    with st.container(horizontal=True, gap="small"):
+        st.button(yes_label, key=yes_key, type="primary", on_click=on_yes, args=yes_args)
+        st.button("Cancel", key=no_key, on_click=on_no, args=no_args)
+
+
+def demo_code_html(code: str) -> str:
+    """The 6-digit code shown on the page in demo mode (no email server); one click selects it."""
+    return (
+        '<div class="sca-demo-code" role="note"><div class="lbl">Demo mode · no email server configured</div>'
+        f'<div class="code">{escape(str(code))}</div>'
+        '<div class="hint">In a real deployment this code arrives by email.</div></div>'
+    )
 
 
 # ---------- flow strip ----------
@@ -313,32 +452,76 @@ def format_rupees(amount) -> str:
     return ("-" if value < 0 else "") + "₹" + digits
 
 
+# ---------- status levels: the same words and colours on every page ----------
+
+LEVEL_COLORS = {"ok": OK_COLOR, "warn": WARN_COLOR, "bad": BAD_COLOR, "info": INFO_COLOR}
+STAT_ICONS = {"Fees": "💳", "Books": "📚", "Attendance": "📅"}
+
+
+def fee_level(status, due=0) -> str:
+    """ok (paid) / warn (due, not late) / bad (overdue) for a fee status from ``effective_fee_status``."""
+    status = str(status or "").lower()
+    if status == "overdue":
+        return "bad"
+    try:
+        owed = float(due or 0) > 0
+    except (TypeError, ValueError):
+        owed = False
+    if status == "paid" or not owed:
+        return "ok"
+    return "warn"
+
+
+def attendance_level(pct) -> str:
+    """ok at or above the 75% minimum, bad below it, info when not recorded yet."""
+    try:
+        return "ok" if float(pct) >= LOW_ATTENDANCE else "bad"
+    except (TypeError, ValueError):
+        return "info"
+
+
+def attendance_text(pct) -> str:
+    """``82%`` / ``61.5%`` (one decimal only when it says something); a dash when not recorded."""
+    try:
+        value = float(pct)
+    except (TypeError, ValueError):
+        return "—"
+    return f"{value:.1f}".rstrip("0").rstrip(".") + "%"
+
+
 def status_chips(record: Mapping | None) -> list[tuple[str, str, str]]:
-    """(label, value, level) for fees, books and attendance; level is ok / warn / bad."""
+    """(label, value, level) for fees, books and attendance; level is ok / warn / bad.
+
+    The same rules as the dashboard KPIs and the admin tables, so the sidebar never disagrees with them.
+    Every value says its status in words as well as in colour.
+    """
     if not record:
         return []
     chips = []
+    today = as_of_date(record)
     fees = record.get("fees") or {}
     if fees:
-        status = effective_fee_status(fees, as_of_date(record))
+        status = effective_fee_status(fees, today)
         due = fees.get("due") or 0
-        if status == "overdue":
-            chips.append(("Fees", f"Overdue {format_rupees(due)}", "bad"))
-        elif status == "paid" or (not status and not due):
+        level = fee_level(status, due)
+        if level == "ok":
             chips.append(("Fees", "Paid", "ok"))
+        elif level == "bad":
+            chips.append(("Fees", f"Overdue · {format_rupees(due)}", "bad"))
         else:
-            chips.append(("Fees", f"Due {format_rupees(due)}" if due else (status.title() or "—"), "warn"))
+            chips.append(("Fees", f"Due · {format_rupees(due)}", "warn"))
     library = record.get("library") or {}
     if library:
         books = library.get("books_issued") or []
         n = len(books) if isinstance(books, (list, tuple)) else int(books or 0)
-        level = "bad" if (library.get("fine_due") or 0) else "ok"
-        chips.append(("Books", f"{n} issued", level))
+        late = sum(1 for b in books if isinstance(b, Mapping) and book_is_overdue(b, today)) if isinstance(books, (list, tuple)) else 0
+        level = "bad" if (library.get("fine_due") or 0) or late else "ok"
+        chips.append(("Books", f"{n} issued" + (f" · {late} overdue" if late else ""), level))
     attendance = record.get("attendance") or {}
     if attendance.get("overall_pct") is not None:
-        pct = float(attendance["overall_pct"])
-        level = "ok" if pct >= 75 else ("warn" if pct >= 65 else "bad")
-        chips.append(("Attendance", f"{pct:.0f}%", level))
+        pct = attendance["overall_pct"]
+        level = attendance_level(pct)
+        chips.append(("Attendance", attendance_text(pct) + (" · below 75%" if level == "bad" else ""), level))
     return chips
 
 
@@ -350,7 +533,7 @@ def profile_card_html(student: Mapping, record: Mapping | None = None) -> str:
     year = record.get("year") or student.get("year")
     initials = "".join(w[0] for w in name.split()[:2]).upper() or "S"
     meta = " · ".join(str(x) for x in (sid, branch, f"Year {year}" if year else None) if x)
-    icons = {"Fees": "💳", "Books": "📚", "Attendance": "📅"}
+    icons = STAT_ICONS
     rows = []
     for label, value, level in status_chips(record):
         bar = ""
@@ -407,7 +590,7 @@ def semester_row_html(record: Mapping | None) -> str:
         return ""
     pct = (sem - 1) / TOTAL_SEMESTERS * 100
     return (
-        '<div class="row sem"><span class="k">Semester</span>'
+        '<div class="row sem"><span class="ic" aria-hidden="true">🎓</span><span class="k">Semester</span>'
         f'<span class="v">{sem} of {TOTAL_SEMESTERS}</span>'
         f'<div class="bar"><span style="width:{pct:.0f}%"></span></div></div>'
     )
@@ -465,7 +648,10 @@ def user_card_html(user: Mapping, record: Mapping | None = None) -> str:
         if semester_row:
             rows.append(semester_row)
         for label, value, level in status_chips(record):
-            rows.append(f'<div class="row {level}"><span class="k">{escape(label)}</span><span class="v">{escape(value)}</span></div>')
+            rows.append(
+                f'<div class="row {level}"><span class="ic" aria-hidden="true">{STAT_ICONS.get(label, "•")}</span>'
+                f'<span class="k">{escape(label)}</span><span class="v">{escape(value)}</span></div>'
+            )
     rows_html = f'<div class="sca-stats compact">{"".join(rows)}</div>' if rows else ""
     role_cls = "admin" if user.get("role") == "admin" else "student"
     return (
@@ -605,25 +791,23 @@ def student_kpis_html(record: Mapping) -> str:
     books = (record.get("library") or {}).get("books_issued") or []
     flags = student_flags(record)
     status = flags["fee_status"]
-    if status == "overdue":
-        fee_accent = BASELINE_COLOR
-    else:
-        fee_accent = PERSONAL_COLOR if flags["fees_due"] else SIMPLE_COLOR
+    fee_accent = LEVEL_COLORS[fee_level(status, flags["fees_due"])]
     if flags["fees_due"]:
         due = fees.get("due_date")
-        fee_sub = f"{fee_status_label(status)} · due {nice_date(due)} ({days_text(due, today)})"
+        when = "was due" if status == "overdue" else "due"
+        fee_sub = f"{fee_status_label(status or 'due')} · {when} {nice_date(due)} ({days_text(due, today)})"
     else:
         fee_sub = f"{fee_status_label(status or 'paid')} · nothing due"
     overdue = flags["overdue_books"]
     book_sub = f"Fine {format_rupees(flags['fine'])}" + (f" · {overdue} overdue" if overdue else "")
-    book_accent = BASELINE_COLOR if (flags["fine"] or overdue) else SIMPLE_COLOR
+    book_accent = BAD_COLOR if (flags["fine"] or overdue) else OK_COLOR
     pct = flags["attendance"]
     if pct is None:
-        att_value, att_sub, att_accent = "—", "Not recorded yet", ROUTER_COLOR
+        att_value, att_sub, att_accent = "—", "Not recorded yet", INFO_COLOR
     else:
-        att_value = f"{pct:.1f}%"
-        att_sub = "Below the 75% minimum" if flags["low_attendance"] else "Above the 75% minimum"
-        att_accent = BASELINE_COLOR if flags["low_attendance"] else SIMPLE_COLOR
+        att_value = attendance_text(pct)
+        att_sub = "Below the 75% minimum" if flags["low_attendance"] else "Meets the 75% minimum"
+        att_accent = LEVEL_COLORS[attendance_level(pct)]
     results = record.get("results") or {}
     cgpa = results.get("cgpa")
     if cgpa is None:
@@ -638,7 +822,7 @@ def student_kpis_html(record: Mapping) -> str:
         kpi_card_html("Attendance", att_value, att_sub, att_accent),
         kpi_card_html("CGPA", cg_value, cg_sub, DEEP_COLOR),
     ]
-    return f'<div class="sca-kpis">{"".join(cards)}</div>'
+    return kpi_row_html(cards)
 
 
 def _list_html(items: list[str]) -> str:
@@ -647,11 +831,13 @@ def _list_html(items: list[str]) -> str:
 
 def _fees_section(record: Mapping) -> None:
     fees = record.get("fees") or {}
-    section_header(
-        "Fees",
-        f"{fees.get('semester', '')} · total {format_rupees(fees.get('total', 0))}, "
-        f"paid {format_rupees(fees.get('paid', 0))}, due {format_rupees(fees.get('due', 0))}".strip(" ·"),
-    )
+    parts = [
+        str(fees.get("semester") or ""),
+        f"Total {format_rupees(fees.get('total', 0))}",
+        f"paid {format_rupees(fees.get('paid', 0))}",
+        f"due {format_rupees(fees.get('due', 0))}",
+    ]
+    section_header("Fees", " · ".join(p for p in parts if p))
     scholarship = fees.get("scholarship")
     if scholarship:
         st.caption(f"Scholarship: {scholarship.get('name')} · {format_rupees(scholarship.get('amount'))}")
@@ -663,7 +849,8 @@ def _fees_section(record: Mapping) -> None:
     if rows:
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     else:
-        st.caption("No payments recorded this semester.")
+        empty_state("🧾", "No payments recorded this semester", "Receipts appear here after each payment.",
+                    compact=True)
 
 
 def _books_section(record: Mapping) -> None:
@@ -672,7 +859,8 @@ def _books_section(record: Mapping) -> None:
     books = [b for b in library.get("books_issued") or [] if isinstance(b, Mapping)]
     section_header("Library books", f"{len(books)} issued · fine due {format_rupees(library.get('fine_due', 0))}")
     if not books:
-        st.caption("No books issued.")
+        empty_state("📚", "No books issued", "Books you borrow from the library are listed here with their due dates.",
+                    compact=True)
         return
     items = []
     for b in sorted(books, key=lambda b: str(b.get("due_date"))):
@@ -696,7 +884,10 @@ def _attendance_section(record: Mapping) -> None:
     attendance = record.get("attendance") or {}
     courses = attendance.get("courses") or []
     overall = attendance.get("overall_pct")
-    caption = f"Overall {overall}% · minimum {LOW_ATTENDANCE:.0f}%" if overall is not None else "Not recorded yet"
+    if overall is not None:
+        caption = f"Overall {attendance_text(overall)} · minimum {LOW_ATTENDANCE:.0f}%"
+    else:
+        caption = "Not recorded yet"
     section_header("Attendance", caption)
     courses = [c for c in courses if isinstance(c, Mapping)]
     recorded = [c for c in courses if c.get("pct") is not None]
@@ -718,7 +909,8 @@ def _attendance_section(record: Mapping) -> None:
     )
     bars = alt.Chart(df).mark_bar(cornerRadiusEnd=4).encode(
         x=alt.X("Attendance (%):Q", scale=alt.Scale(domain=[0, 100]), title=None),
-        y=alt.Y("Course:N", sort=None, title=None, axis=alt.Axis(labelLimit=240, labelOverlap=False)),
+        # Long course names are cut with "…" (full name in the tooltip) so the bars keep room on phones.
+        y=alt.Y("Course:N", sort=None, title=None, axis=alt.Axis(labelLimit=170, labelOverlap=False)),
         color=alt.Color(
             "Status:N",
             scale=alt.Scale(domain=["OK", "Below 75%"], range=[SIMPLE_COLOR, BASELINE_COLOR]),
@@ -745,6 +937,7 @@ def _exams_section(record: Mapping) -> None:
     )
     section_header("Upcoming exams", f"{len(upcoming)} scheduled" if upcoming else "None scheduled")
     if not upcoming:
+        empty_state("🗓️", "No exams scheduled", "The exam timetable shows up here once it is published.", compact=True)
         return
     items = []
     for e in upcoming:
@@ -796,35 +989,25 @@ def render_student_dashboard(record: Mapping) -> None:
 
 NOTICE_ICONS = {"exams": "📝", "fees": "💳", "hostel": "🏠", "library": "📚", "general": "📢"}
 
-NOTICE_CSS = """
-<style>
-.sca-notices { display: flex; flex-direction: column; gap: .6rem; margin: .5rem 0 1rem 0; }
-.sca-notice {
-  border: 1px solid var(--sca-card-border, rgba(128,128,128,.25)); border-radius: var(--sca-radius, 14px);
-  background: var(--sca-card-bg, transparent); padding: .8rem 1rem;
-  border-left: 4px solid var(--sca-brand, #5B5BD6);
-}
-.sca-notice .head { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
-.sca-notice .title { font-weight: 650; font-size: 1rem; }
-.sca-notice .meta { font-size: .78rem; color: var(--sca-muted, gray); margin-top: .15rem; }
-.sca-notice .body { font-size: .9rem; margin-top: .4rem; white-space: pre-wrap; }
-</style>
-"""
+# The notice card styles now live in ui.theme (with the other cards); kept so old imports still work.
+NOTICE_CSS = ""
 
 
 def notice_card_html(notice: Mapping, show_body: bool = True, max_body: int | None = None) -> str:
-    """One notice as a card (all fields escaped)."""
+    """One notice as a card (all fields escaped); the left stripe colour follows the category."""
     category = str(notice.get("category") or "general")
-    icon = NOTICE_ICONS.get(category, "📢")
+    known = category if category in NOTICE_ICONS else "general"
+    icon = NOTICE_ICONS[known]
     branches = list(notice.get("branches") or [])
     for_text = "All branches" if not branches or "ALL" in branches else ", ".join(str(b) for b in branches)
-    meta = f"{notice.get('id', '')} · {nice_date(notice.get('published_at'))} · {category.title()} · {for_text}"
+    published = nice_date(notice.get("published_at")) if notice.get("published_at") else "not published yet"
+    meta = f"{notice.get('id', '')} · {published} · {category.title()} · {for_text}"
     body = str(notice.get("body") or "")
     if max_body and len(body) > max_body:
         body = body[:max_body].rsplit(" ", 1)[0] + "…"
     body_html = f'<div class="body">{escape(body)}</div>' if show_body and body else ""
     return (
-        f'<div class="sca-notice"><div class="head"><span>{icon}</span>'
+        f'<div class="sca-notice cat-{known}"><div class="head"><span aria-hidden="true">{icon}</span>'
         f'<span class="title">{escape(str(notice.get("title") or ""))}</span></div>'
         f'<div class="meta">{escape(meta)}</div>{body_html}</div>'
     )

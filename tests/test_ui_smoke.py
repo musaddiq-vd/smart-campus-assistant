@@ -129,7 +129,8 @@ def _existing(pages: list[tuple[str, str]]) -> list[str]:
 
 ADMIN_PAGES = [
     *_existing([("admin_overview.py", "Overview"), ("admin_students.py", "Students"), ("admin_requests.py", "Requests"),
-                ("admin_notices.py", "Notices"), ("admin_insights.py", "Insights")]),
+                ("admin_notices.py", "Notices"), ("admin_documents.py", "Documents"),
+                ("admin_insights.py", "Insights")]),
     "Ask", "Account",
 ]
 STUDENT_PAGES = [
