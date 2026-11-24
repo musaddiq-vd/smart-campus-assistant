@@ -12,7 +12,7 @@ from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
-from smart_campus_assistant.config import BRANCHES, get_settings
+from smart_campus_assistant.config import BRANCHES, get_settings, local_today
 
 LOW_ATTENDANCE_PCT = 75.0
 
@@ -585,7 +585,7 @@ def _programme_lines(record: dict) -> list[str]:
 
 def student_context(record: dict) -> str:
     """Readable text block of ONE student's record for prompts."""
-    today = _date(record.get("as_of")) or date.today()
+    today = _date(record.get("as_of")) or local_today()
     branch = record.get("branch", "")
     lines = [
         f"Student record (as of {today.isoformat()})",

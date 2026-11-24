@@ -148,3 +148,26 @@ def test_new_admission_reads_unpaid_for_the_assistant_too():
                        "due_date": "2026-11-30", "status": "partially_paid", "transactions": []}}
     text = student_context(record)
     assert "status: unpaid" in text and "partially paid" not in text
+
+
+# ---------------------------------------------------------------- dates follow the college, not the server
+
+
+def test_local_today_is_the_college_date(monkeypatch):
+    monkeypatch.delenv("SCA_TIMEZONE", raising=False)
+    assert config.local_today() == datetime.now(config.local_timezone()).date()
+    monkeypatch.setenv("SCA_TIMEZONE", "UTC")
+    assert config.local_today() == datetime.now(timezone.utc).date()
+
+
+def test_upload_time_is_stored_in_utc_and_shown_in_ist(tmp_path, monkeypatch):
+    from smart_campus_assistant import documents
+
+    monkeypatch.setenv("SCA_UPLOADS_DIR", str(tmp_path))
+    monkeypatch.delenv("SCA_TIMEZONE", raising=False)
+    documents.save_document("rules.md", b"# Rules\n\n## Bus\n\nBuses leave at 7:30 am.\n")
+    (info,) = documents.list_documents()
+    stamp = datetime.fromisoformat(info["uploaded_at"])
+    assert stamp.utcoffset() == timedelta(0)  # an aware UTC time, not the server's naive local time
+    shown = config.local_time(info["uploaded_at"])
+    assert abs((shown - datetime.now(timezone.utc)).total_seconds()) < 300  # "now", not 5:30 h off

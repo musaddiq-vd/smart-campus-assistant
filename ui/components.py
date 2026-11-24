@@ -709,8 +709,16 @@ def _to_date(value) -> date | None:
 
 
 def as_of_date(record: Mapping | None) -> date:
-    """The data's "today" (records carry ``as_of``); falls back to the real date."""
-    return _to_date((record or {}).get("as_of")) or date.today()
+    """The data's "today" (records carry ``as_of``); falls back to today's date in the college's time zone."""
+    found = _to_date((record or {}).get("as_of"))
+    if found:
+        return found
+    try:
+        from smart_campus_assistant.config import local_today
+
+        return local_today()
+    except Exception:  # noqa: BLE001  (backend missing: the server's date)
+        return date.today()
 
 
 def fee_status_label(status) -> str:

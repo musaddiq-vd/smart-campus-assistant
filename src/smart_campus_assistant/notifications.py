@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Iterable, Mapping
 
 from smart_campus_assistant import db, mailer, student_data
-from smart_campus_assistant.config import COLLEGE_NAME
+from smart_campus_assistant.config import COLLEGE_NAME, local_today
 
 log = logging.getLogger(__name__)
 
@@ -237,7 +237,7 @@ def reminder_date(record: Mapping | None) -> date:
     This is the same date the student dashboard and the assistant use, so an email never shows
     other amounts than the app.
     """
-    return _parse_date((record or {}).get("as_of")) or date.today()
+    return _parse_date((record or {}).get("as_of")) or local_today()
 
 
 def _parse_date(value: object) -> date | None:

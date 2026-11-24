@@ -25,7 +25,7 @@ from pathlib import Path
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from smart_campus_assistant.config import BRANCHES, COLLEGE_KEY, PROJECT_ROOT
+from smart_campus_assistant.config import BRANCHES, COLLEGE_KEY, PROJECT_ROOT, local_today
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,7 @@ def _next_id(notices: list[dict], today: date) -> str:
 def add_notice(title, body, category, branches, author, today: date | None = None) -> dict:
     """Validate, store and return the new notice (raises NoticeError on bad input)."""
     fields = validate(title, body, category, branches)
-    today = today or date.today()
+    today = today or local_today()  # the college's date, not the server's
     with _lock:
         path = notices_file()
         notices = _load(path)

@@ -13,7 +13,7 @@ Students ask about the college or their *own* record, pay their fees and raise r
 ![S3 Vectors](https://img.shields.io/badge/Vector%20store-S3%20Vectors-569A31?logo=amazons3&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B?logo=streamlit&logoColor=white)
 ![SQLite](https://img.shields.io/badge/Auth-SQLite-003B57?logo=sqlite&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-866%20offline-0A9EDC?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-869%20offline-0A9EDC?logo=pytest&logoColor=white)
 
 ![Student chat](docs/screenshots/02-student-chat.png)
 
@@ -59,7 +59,7 @@ Students ask about the college or their *own* record, pay their fees and raise r
 | 💬 **Follow-up questions** | "aur ECE ka?" after a CSE fee question is understood from the earlier turns and answered as a full question. |
 | 🛡️ **Abuse limits** | A per-account question budget keeps one account from running up the model bill. |
 | 📴 **Works offline** | Demo mode needs no AWS: a keyword (BM25) search over the same documents and an extractive stand-in model, so answers still quote the real data. |
-| 🧪 **Measured, not guessed** | A 45-question developer eval compares the router against an "always deep" baseline; 866 offline tests cover the rest. |
+| 🧪 **Measured, not guessed** | A 45-question developer eval compares the router against an "always deep" baseline; 869 offline tests cover the rest. |
 
 ## 🧑‍🎓 What students and admins can do
 
@@ -90,9 +90,9 @@ All screenshots are from demo mode (offline, synthetic data).
 |---|---|
 | ![Student dashboard](docs/screenshots/04-student-dashboard.png) | ![Pay fees](docs/screenshots/05-student-pay-fees.png) |
 
-| My requests |
-|---|
-| ![My requests](docs/screenshots/06-student-requests.png) |
+| My requests | Follow-up question and answer rating |
+|---|---|
+| ![My requests](docs/screenshots/06-student-requests.png) | ![Follow-up and rating](docs/screenshots/02-student-chat.png) |
 
 **Admin**
 
@@ -100,13 +100,13 @@ All screenshots are from demo mode (offline, synthetic data).
 |---|---|
 | ![Admin overview](docs/screenshots/07-admin-overview.png) | ![Admin requests](docs/screenshots/08-admin-requests.png) |
 
-| Students → Manage record | Insights |
+| Students → Manage record | Insights: questions, ratings and model usage |
 |---|---|
 | ![Manage record](docs/screenshots/09-admin-manage-record.png) | ![Insights](docs/screenshots/10-admin-insights.png) |
 
-| Notices |
-|---|
-| ![Admin notices](docs/screenshots/11-admin-notices.png) |
+| Notices | Documents (upload what the assistant answers from) |
+|---|---|
+| ![Admin notices](docs/screenshots/11-admin-notices.png) | ![Admin documents](docs/screenshots/12-admin-documents.png) |
 
 ---
 
@@ -222,7 +222,7 @@ Details worth knowing:
 | App | Streamlit (role-based pages, Altair charts) |
 | Accounts | SQLite + standard-library crypto (no extra auth packages) |
 | Email | SMTP with STARTTLS from the standard library, through an outbox table |
-| Quality | pytest (866 offline tests), Ruff, GitHub Actions |
+| Quality | pytest (869 offline tests), Ruff, GitHub Actions |
 
 ## 🚀 Quick start
 
@@ -307,7 +307,7 @@ The model evaluation is a development tool, so it is not part of the app. It com
 ```bash
 python eval/run_eval.py          # live: router vs always-deep (route accuracy, tokens, cost, latency)
 python eval/run_eval.py --fake   # offline dry run (free, a few seconds)
-python -m pytest -q              # 866 offline tests (fake LLM, offline search, temp SQLite)
+python -m pytest -q              # 869 offline tests (fake LLM, offline search, temp SQLite)
 ruff check .                     # lint
 ```
 

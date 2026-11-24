@@ -23,6 +23,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from smart_campus_assistant import db, student_data
+from smart_campus_assistant.config import local_today
 from smart_campus_assistant.notices import clean_input
 
 PAYMENT_MODES = ("UPI", "Card", "NetBanking", "Cash", "NEFT")
@@ -101,7 +102,7 @@ def _base_record(student_id: object, path: str | Path | None) -> tuple[str, dict
 
 def _today(record: dict) -> date:
     """The data's "today": the record's ``as_of`` date, else the real date."""
-    return student_data._date(record.get("as_of")) or date.today()  # noqa: SLF001
+    return student_data._date(record.get("as_of")) or local_today()  # noqa: SLF001
 
 
 def _whole_rupees(amount: object) -> int:

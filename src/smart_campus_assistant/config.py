@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone, tzinfo
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from functools import lru_cache
 from pathlib import Path
 
@@ -89,6 +89,11 @@ def local_timezone() -> tzinfo:
         return ZoneInfo(name)
     except Exception:  # noqa: BLE001  (ZoneInfoNotFoundError, bad name)
         return _IST if name == DEFAULT_TIMEZONE else timezone.utc
+
+
+def local_today() -> date:
+    """Today's date in the college's time zone (a server in UTC would otherwise be a day behind after midnight IST)."""
+    return datetime.now(local_timezone()).date()
 
 
 def local_time(stamp: object) -> datetime | None:

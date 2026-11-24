@@ -20,7 +20,7 @@ import os
 import re
 import tempfile
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from langchain_core.documents import Document
@@ -247,7 +247,8 @@ def _info(path: Path) -> dict:
         "kind": "Markdown" if path.suffix.lower() == ".md" else "Text",
         "size": stat.st_size,
         "size_label": _size_label(stat.st_size),
-        "uploaded_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="minutes"),
+        # Stored in UTC like every other time in the app; pages show it in the college's time zone.
+        "uploaded_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(timespec="minutes"),
         "sections": len(sections),
         "chunks": chunks,
     }
